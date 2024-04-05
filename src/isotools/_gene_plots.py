@@ -373,7 +373,7 @@ def sashimi_plot(self, samples=None, title='Long read sashimi plot', ax=None, ju
 
 
 def gene_track(self, ax=None, title=None, reference=True, select_transcripts=None, label_exon_numbers=True,
-               label_transcripts=True, label_fontsize=10, color='blue', x_range=None, draw_other_genes=False,
+               label_transcripts=True, label_fontsize=10, colorbySqanti=True, color='blue', x_range=None, draw_other_genes=False,
                query=None, mincoverage=None, maxcoverage=None):
     '''Draws a gene track of the gene.
 
@@ -390,7 +390,8 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
     :param label_exon_numbers: Draw exon numbers within exons.
     :param label_transcripts: Draw transcript name below transcripts.
     :param label_fontsize: Specify the font sice for the labels.
-    :param color: Specify the color for the exons.
+    :param colorbySqanti: Color the long-read transcripts based on their SQANTI class. By default it's true.
+    :param color: Specify the color for the reference transcripts, and for the long-read transcripts if colorbySqanti is False.
     :param x_range: Genomic positions to specify the x range of the plot.
     :param draw_other_genes: If set to True, transcripts from other genes overlapping the depicted region are also displayed.
         You can also provide a list of gene names/ids, to specify which other genes should be included.
@@ -407,12 +408,21 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
             _ = iter(select_transcripts)
         except TypeError:
             select_transcripts = {self.name: [select_transcripts]}
+    
     contrast = 'white' if np.mean(plt_col.to_rgb(color)) < .5 else 'black'
+    
+    if colorbySqanti:
+        sqanti_palette = {0:{'tag':'FSM', 'color':'#6BAED6'}, 1:{'tag':'ISM', 'color':'#FC8D59'},
+                          2:{'tag':'NIC', 'color':'#78C679'}, 3:{'tag':'NNC', 'color':'#EE6A50'},
+                          4:{'tag':'NOVEL', 'color':'palevioletred'}}
+    
     if ax is None:
         _, ax = plt.subplots(1)
     if x_range is None:
         x_range = (self.start - 100, self.end + 100)
+    
     blocked = []
+    
     if draw_other_genes:
         if isinstance(draw_other_genes, list):
             ol_genes = {self._transcriptome[g] for g in draw_other_genes}.add(self)
@@ -420,16 +430,20 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
             ol_genes = self._transcriptome.data[self.chrom].overlap(*x_range)
     else:
         ol_genes = {self}
+    
     transcript_list = []
     for g in ol_genes:
         select_tr = g.filter_ref_transcripts(query) if reference else g.filter_transcripts(query, mincoverage, maxcoverage)
+        
         if select_transcripts.get(g.name):
             select_tr = [trid for trid in select_tr if trid in select_transcripts.get(g.name)]
+        
         if reference:  # select transcripts and sort by start
             transcript_list.extend([(g, tr_nr, tr) for tr_nr, tr in enumerate(g.ref_transcripts) if tr_nr in select_tr])
         else:
             transcript_list.extend([(g, tr_nr, tr) for tr_nr, tr in enumerate(g.transcripts) if tr_nr in select_tr])
     transcript_list.sort(key=lambda x: x[2]['exons'][0][0])  # sort by start position
+    
     for g, tr_nr, tr in transcript_list:
         tr_start, tr_end = tr['exons'][0][0], tr['exons'][-1][1]
         if (tr_end < x_range[0] or tr_start > x_range[1]):  # transcript does not overlap x_range
@@ -445,6 +459,11 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
             blocked.append(tr_end)
         else:
             blocked[i] = tr_end
+        
+        # use SQANTI color palette if colorbySqanti is True
+        if colorbySqanti:
+            color = sqanti_palette[tr['annotation'][0]]['color']
+        
         # line from TSS to PAS at 0.25
         ax.plot((tr_start, tr_end), [i + .25] * 2, color=color)
         if label_transcripts:
@@ -474,14 +493,16 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
                 ax.text(pos, i + .25, enr, ha='center', va='center', color=contrast, fontsize=label_fontsize,
                         clip_on=True)  # bbox=dict(boxstyle='round', facecolor='wheat',edgecolor=None,  alpha=0.5)
         i += 1
-    if title is None:
-        title = f'{self.name} ({self.region})'
+    
+    if title is None: title = f'{self.name} ({self.region})'
+    
     ax.set_title(title)
     ax.set(frame_on=False)
     ax.get_yaxis().set_visible(False)
     ax.set_ylim(-.5, len(blocked))
     ax.set_xlim(*x_range)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos=None: f'{x:,.0f}'))
+    
     return ax
 
 
