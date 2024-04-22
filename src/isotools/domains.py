@@ -46,7 +46,7 @@ def add_domains_to_table(table, transcriptome, source='annotation', categories=N
     :parm overlap_only: If set "True", only domains overlapping the region from column "start" to "end" are considered.
         If set "False", all domains of the transcripts are considered.
     :param insert_after: Define column after which the domains are inserted into the table, either by column name or index.
-        By default, domain columns returned as seperate DataFrame.
+        By default, domain columns returned as separate DataFrame.
     :param **filter_kwargs: additional keywords are passed to Gene.filter_transcripts, to restrict the transcripts to be considered.'''
 
     # set operators:
@@ -209,7 +209,7 @@ def add_annotation_domains(self, annotation, category, id_col='uniProtId', name_
     '''Annotate isoforms with protein domains from uniprot ucsc table files.
 
     This function adds protein domains and other protein annotation to the transcripts.
-    Annotation tables can be retriefed from https://genome.ucsc.edu/cgi-bin/hgTables. Select
+    Annotation tables can be retrieved from https://genome.ucsc.edu/cgi-bin/hgTables. Select
     group: = "Genes and Gene Predictions", track: "UniProt", and chose from the available tables (e.g. "domains").
 
     :param annotation: The file name of the table downloaded from the table browser, or a pandas dataframe with the content.
