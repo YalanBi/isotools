@@ -582,7 +582,7 @@ def get_patches(blocks, orf, h, w1=.1, w2=.5, connect=True, **kwargs):
     return (rects)
 
 
-def find_segments(transcripts, orf_only=True, seperate_exons=False):
+def find_segments(transcripts, orf_only=True, separate_exons=False):
     '''Find exonic parts of the gene, with respect to trids.'''
     if orf_only:
         exon_list = []
@@ -614,7 +614,7 @@ def find_segments(transcripts, orf_only=True, seperate_exons=False):
             assert not is_end, f'more exons closed than opened before: {pos} at {junctions}'
             genome_map.append([pos, None])
         if not is_end:
-            if seperate_exons or not segments[tr_i] or segments[tr_i][-1][1] < offset:
+            if separate_exons or not segments[tr_i] or segments[tr_i][-1][1] < offset:
                 segments[tr_i].append([offset, None])
             open_c += 1
         else:
@@ -658,7 +658,7 @@ def genome_pos_to_gene_segments(pos, genome_map, strict=True):
     return {p: mp for p, mp in zip(pos, mapped_pos)}
 
 
-def plot_domains(self, source, categories=None, trids=True, ref_trids=False, coding_only=True, label='name', include_utr=False, seperate_exons=True,
+def plot_domains(self, source, categories=None, trids=True, ref_trids=False, coding_only=True, label='name', include_utr=False, separate_exons=True,
                  x_ticks='gene', ax=None, dom_space=.8, domain_cols=DOMAIN_COLS,  max_overlap=5, highlight=None, highlight_col='red'):
     '''Plot exonic part of transcripts, together with protein domanis and annotations.
 
@@ -670,7 +670,7 @@ def plot_domains(self, source, categories=None, trids=True, ref_trids=False, cod
     :param coding_only: Depict only transcripts with annotated ORF/CDS (requires include_utr=True)
     :param label: Specify the type of label: eiter None, or id, or name.
     :param include_utr: If set True, the untranslated regions are also depicted.
-    :param seperate_exons: If set True, exon boundaries are marked.
+    :param separate_exons: If set True, exon boundaries are marked.
     :param x_ticks: Either "gene" or "genome". If set to "gene", positions are relative to the gene (continuous, starting from 0).
         If set to "genome", positions are (discontinous) genomic coordinates.
     :param dom_space: relative space used for the domains. Should be between 0 and 1.
@@ -705,7 +705,7 @@ def plot_domains(self, source, categories=None, trids=True, ref_trids=False, cod
     if ax is None:
         _, ax = plt.subplots(1)
     skipped = 0
-    segments, genome_map = find_segments([tr for _, tr in transcripts], orf_only=not include_utr, seperate_exons=seperate_exons)
+    segments, genome_map = find_segments([tr for _, tr in transcripts], orf_only=not include_utr, separate_exons=separate_exons)
     max_len = max(seg[-1][1] for seg in segments)
     assert max_len == sum(seg[1]-seg[0] for seg in genome_map)
     if self.strand == "-":
