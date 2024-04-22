@@ -10,6 +10,7 @@ import itertools
 
 # from .decorators import deprecated, debug, experimental
 from ._utils import _filter_function
+from .splice_graph import SegmentGraph
 
 logger = logging.getLogger('isotools')
 
@@ -299,35 +300,35 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
     sidx = np.array([sa_dict[sa] for sa in samples])
 
     assert 0 < min_alt_fraction < .5, 'min_alt_fraction must be > 0 and < 0.5'
-    for g in self.iter_genes(**kwargs):
-        if g.coverage[sidx, :].sum() < min_total:
+    for gene in self.iter_genes(**kwargs):
+        if gene.coverage[sidx, :].sum() < min_total:
             continue
         known = {}  # check for known events
-        if g.is_annotated and g.n_transcripts:
-            sg = g.ref_segment_graph
-            for _, _, nX, nY, splice_type in sg.find_splice_bubbles():  # find annotated alternatives (known)
+        if gene.is_annotated and gene.n_transcripts:
+            ref_seg_graph: SegmentGraph = gene.ref_segment_graph
+            for _, _, nX, nY, splice_type in ref_seg_graph.find_splice_bubbles():  # find annotated alternatives (known)
                 if splice_type in ("TSS", "PAS"):
-                    if (splice_type == "TSS") == (g.strand == "+"):
-                        known.setdefault(splice_type, set()).add((sg[nX].end))
+                    if (splice_type == "TSS") == (gene.strand == "+"):
+                        known.setdefault(splice_type, set()).add((ref_seg_graph[nX].end))
                     else:
-                        known.setdefault(splice_type, set()).add((sg[nY].start))
+                        known.setdefault(splice_type, set()).add((ref_seg_graph[nY].start))
                 else:
-                    known.setdefault(splice_type, set()).add((sg[nX].end, sg[nY].start))
-        sg = g.segment_graph
-        for setA, setB, nX, nY, splice_type in sg.find_splice_bubbles():
-            junction_cov = g.coverage[np.ix_(sidx, setA)].sum(1)
-            total_cov = g.coverage[np.ix_(sidx, setB)].sum(1) + junction_cov
+                    known.setdefault(splice_type, set()).add((ref_seg_graph[nX].end, ref_seg_graph[nY].start))
+        seg_graph: SegmentGraph = gene.segment_graph
+        for setA, setB, nX, nY, splice_type in seg_graph.find_splice_bubbles():
+            junction_cov = gene.coverage[np.ix_(sidx, setA)].sum(1)
+            total_cov = gene.coverage[np.ix_(sidx, setB)].sum(1) + junction_cov
             if total_cov.sum() >= min_total and min_alt_fraction < junction_cov.sum() / total_cov.sum() < 1 - min_alt_fraction:
                 if splice_type in ['TSS', 'PAS']:
-                    start, end = sg[nX].start, sg[nY].end
-                    if (splice_type == "TSS") == (g.strand == "+"):
+                    start, end = seg_graph[nX].start, seg_graph[nY].end
+                    if (splice_type == "TSS") == (gene.strand == "+"):
                         novel = end not in known.get(splice_type, set())
                     else:
                         novel = start not in known.get(splice_type, set())
                 else:
-                    start, end = sg[nX].end, sg[nY].start
+                    start, end = seg_graph[nX].end, seg_graph[nY].start
                     novel = (start, end) not in known.get(splice_type, set())
-                bubbles.append([g.id, g.chrom, start, end, splice_type, novel] + list(junction_cov) + list(total_cov))
+                bubbles.append([gene.id, gene.chrom, start, end, splice_type, novel] + list(junction_cov) + list(total_cov))
     return pd.DataFrame(bubbles, columns=['gene', 'chr', 'start', 'end', 'splice_type', 'novel'] +
                         [f'{sa}_{what}' for what in ['in_cov', 'total_cov'] for sa in samples])
 
@@ -361,7 +362,7 @@ def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, 
 
     :param groups: A dict {group_name:[sample_name_list]} specifying sample groups. If omitted, the samples are analyzed individually.
     :param weight_by_coverage: If True, each transcript is weighted by the coverage.
-    :param min_coverage: Threshold to ignore poorly covered transcripts. This parameter gets applied for each sample group seperately.
+    :param min_coverage: Threshold to ignore poorly covered transcripts. This parameter gets applied for each sample group separately.
     :param tr_filter: Filter dict, that is passed to self.iter_transcripts().
     :return: Table with numbers of novel alternative splicing events, and suggested parameters for isotools.plots.plot_bar().'''
     weights = dict()
