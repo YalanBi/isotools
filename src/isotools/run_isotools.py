@@ -341,7 +341,7 @@ def test_differential(isoseq, groups, illu_groups, args, file_suffix):
         gr = diff_cmp.split('/')
         logger.debug(f'processing {gr}')
         if len(gr) != 2:
-            logger.error('--diff argument format error: provide two groups seperated by "/" -- skipping')
+            logger.error('--diff argument format error: provide two groups separated by "/" -- skipping')
             continue
         if not all(gn in groups for gn in gr):
             logger.error(
