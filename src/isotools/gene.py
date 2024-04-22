@@ -639,19 +639,19 @@ class Gene(Interval):
 
         assert self.is_annotated, "reference segment graph requested on novel gene"
         if 'segment_graph' not in self.data['reference'] or self.data['reference']['segment_graph'] is None:
-            exons = [tr['exons'] for tr in self.ref_transcripts]
-            self.data['reference']['segment_graph'] = SegmentGraph(exons, self.strand)
+            transcript_exons = [tr['exons'] for tr in self.ref_transcripts]
+            self.data['reference']['segment_graph'] = SegmentGraph(transcript_exons, self.strand)
         return self.data['reference']['segment_graph']
 
     @property
     def segment_graph(self):
         '''Returns the segment graph of the LRTS transcripts for the gene'''
         if 'segment_graph' not in self.data or self.data['segment_graph'] is None:
-            exons = [tr['exons'] for tr in self.transcripts]
+            transcript_exons = [transcript['exons'] for transcript in self.transcripts]
             try:
-                self.data['segment_graph'] = SegmentGraph(exons, self.strand)
+                self.data['segment_graph'] = SegmentGraph(transcript_exons, self.strand)
             except Exception:
-                logger.error('Error initializing Segment Graph on %s with exons %s', self.strand, exons)
+                logger.error('Error initializing Segment Graph on %s with exons %s', self.strand, transcript_exons)
                 raise
         return self.data['segment_graph']
 
@@ -866,7 +866,7 @@ class Gene(Interval):
             return pval, deltaPI_neg, idx[neg_idx]
 
     def _unify_ends(self, smooth_window=31, rel_prominence=1, search_range=(.1, .9)):
-        ''' Find common TSS/PAS for tanscripts of the gene'''
+        ''' Find common TSS/PAS for transcripts of the gene'''
         if not self.transcripts:
             # nothing to do here
             return
@@ -875,12 +875,12 @@ class Gene(Interval):
         tss = {}
         pas = {}
         strand = 1 if self.strand == '+' else -1
-        for tr in self.transcripts:
-            for sa in tr['TSS']:
-                for pos, c in tr['TSS'][sa].items():
+        for transcript in self.transcripts:
+            for sa in transcript['TSS']:
+                for pos, c in transcript['TSS'][sa].items():
                     tss[pos] = tss.get(pos, 0)+c
-            for sa in tr['PAS']:
-                for pos, c in tr['PAS'][sa].items():
+            for sa in transcript['PAS']:
+                for pos, c in transcript['PAS'][sa].items():
                     pas[pos] = pas.get(pos, 0)+c
 
         tss_pos = [min(tss), max(tss)]
@@ -905,9 +905,9 @@ class Gene(Interval):
         # find transcripts with common first/last splice site
         first_junction = {}
         last_junction = {}
-        for trid, tr in enumerate(self.transcripts):
-            first_junction.setdefault(tr['exons'][0][1], []).append(trid)
-            last_junction.setdefault(tr['exons'][-1][0], []).append(trid)
+        for trid, transcript in enumerate(self.transcripts):
+            first_junction.setdefault(transcript['exons'][0][1], []).append(trid)
+            last_junction.setdefault(transcript['exons'][-1][0], []).append(trid)
         # first / last junction with respect to direction of transcription
         if self.strand == '-':
             first_junction, last_junction = last_junction, first_junction
@@ -918,7 +918,7 @@ class Gene(Interval):
             for trid in tr_ids:
                 for sa_tss in self.transcripts[trid]['TSS'].values():
                     for pos, c in sa_tss.items():
-                        profile[pos] = profile.get(pos, 0)+c
+                        profile[pos] = profile.get(pos, 0) + c
             quantiles = get_quantiles(sorted(profile.items()), [search_range[0], .5, search_range[1]])
             # one/ several peaks within base range? -> quantify by next read_start
             # else use median
@@ -926,15 +926,15 @@ class Gene(Interval):
             if not ol_peaks:
                 ol_peaks = [quantiles[1]]
             for trid in tr_ids:
-                tr = self.transcripts[trid]
-                tr['TSS_unified'] = {}
-                for sa, sa_tss in tr['TSS'].items():
+                transcript = self.transcripts[trid]
+                transcript['TSS_unified'] = {}
+                for sa, sa_tss in transcript['TSS'].items():
                     tss_unified = {}
                     for pos, c in sa_tss.items():  # for each read start position, find closest peak
                         next_peak = min((p for p in ol_peaks if cmp_dist(junction_pos, p, min_dist=3) == strand),
                                         default=pos, key=lambda x: abs(x-pos))
                         tss_unified[next_peak] = tss_unified.get(next_peak, 0)+c
-                    tr['TSS_unified'][sa] = tss_unified
+                    transcript['TSS_unified'][sa] = tss_unified
         # same for PAS
         for junction_pos, tr_ids in last_junction.items():
             profile = {}
@@ -949,30 +949,30 @@ class Gene(Interval):
             if not ol_peaks:
                 ol_peaks = [quantiles[1]]
             for trid in tr_ids:
-                tr = self.transcripts[trid]
-                tr['PAS_unified'] = {}
-                for sa, sa_pas in tr['PAS'].items():
+                transcript = self.transcripts[trid]
+                transcript['PAS_unified'] = {}
+                for sa, sa_pas in transcript['PAS'].items():
                     pas_unified = {}
                     for pos, c in sa_pas.items():
                         next_peak = min((p for p in ol_peaks if cmp_dist(p, junction_pos, min_dist=3) == strand),
                                         default=pos, key=lambda x: abs(x-pos))
                         pas_unified[next_peak] = pas_unified.get(next_peak, 0)+c
-                    tr['PAS_unified'][sa] = pas_unified
-        for tr in self.transcripts:
+                    transcript['PAS_unified'][sa] = pas_unified
+        for transcript in self.transcripts:
             # find the most common tss/pas per transcript, and set the exon boundaries
             sum_tss = {}
             sum_pas = {}
             start = end = max_tss = max_pas = 0
-            for sa_tss in tr['TSS_unified'].values():
+            for sa_tss in transcript['TSS_unified'].values():
                 for pos, cov in sa_tss.items():
                     sum_tss[pos] = sum_tss.get(pos, 0)+cov
             for pos, cov in sum_tss.items():
                 if cov > max_tss:
                     max_tss = cov
                     start = pos
-            for sa_pas in tr['PAS_unified'].values():
+            for sa_pas in transcript['PAS_unified'].values():
                 for pos, cov in sa_pas.items():
-                    sum_pas[pos] = sum_pas.get(pos, 0)+cov
+                    sum_pas[pos] = sum_pas.get(pos, 0) + cov
             for pos, cov in sum_pas.items():
                 if cov > max_pas:
                     max_pas = cov
@@ -980,18 +980,18 @@ class Gene(Interval):
             if self.strand == '-':
                 start, end = end, start
             if start >= end:  # for monoexons this may happen in rare situations
-                assert len(tr['exons']) == 1
-                tr['TSS_unified'] = None
-                tr['PAS_unified'] = None
+                assert len(transcript['exons']) == 1
+                transcript['TSS_unified'] = None
+                transcript['PAS_unified'] = None
             else:
                 try:
                     # issues if the new exon start is behind the exon end
-                    assert start < tr['exons'][0][1] or len(tr['exons']) == 1, 'error unifying %s: %s>=%s' % (tr["exons"], start, tr['exons'][0][1])
-                    tr['exons'][0][0] = start
-                    assert end > tr['exons'][-1][0] or len(tr['exons']) == 1, 'error unifying %s: %s<=%s' % (tr["exons"], end, tr['exons'][-1][0])
-                    tr['exons'][-1][1] = end
+                    assert start < transcript['exons'][0][1] or len(transcript['exons']) == 1, 'error unifying %s: %s>=%s' % (transcript["exons"], start, transcript['exons'][0][1])
+                    transcript['exons'][0][0] = start
+                    assert end > transcript['exons'][-1][0] or len(transcript['exons']) == 1, 'error unifying %s: %s<=%s' % (transcript["exons"], end, transcript['exons'][-1][0])
+                    transcript['exons'][-1][1] = end
                 except AssertionError:
-                    logger.error('%s TSS= %s, PAS=%s -> TSS_unified= %s, PAS_unified=%s', self, tr['TSS'], tr['PAS'],  tr['TSS_unified'], tr['PAS_unified'])
+                    logger.error('%s TSS= %s, PAS=%s -> TSS_unified= %s, PAS_unified=%s', self, transcript['TSS'], transcript['PAS'],  transcript['TSS_unified'], transcript['PAS_unified'])
                     raise
 
 
