@@ -9,6 +9,7 @@ from pysam import TabixFile, AlignmentFile, FastaFile
 from tqdm import tqdm
 from contextlib import ExitStack
 from .short_read import Coverage
+from typing import Generator
 from ._utils import junctions_from_cigar, splice_identical, is_same_gene, has_overlap, get_overlap, pairwise, \
     cigar_string2tuples, rc, get_intersects, _find_splice_sites, _get_overlap, get_quantiles  # , _get_exonic_region
 from .gene import Gene
@@ -25,11 +26,11 @@ logger = logging.getLogger('isotools')
 def add_short_read_coverage(self, bam_files, load=False):
     '''Adds short read coverage to the genes.
 
-    This does, by default (e.g. if load==False), this method does not actually read the bams,
+    By default (e.g. if load==False), this method does not actually read the bams,
     but import for each gene is done at first access.
 
     :param bam_files: A dict with the sample names as keys, and the path to aligned short reads in bam format as values.
-    :param load: If True, the coveage of all genes is imported. WARNING: this may take a long time.'''
+    :param load: If True, the coverage of all genes is imported. WARNING: this may take a long time.'''
     self.infos.setdefault('short_reads', pd.DataFrame(columns=['name', 'file'], dtype='object'))
 
     bam_files = {k: v for k, v in bam_files.items() if k not in self.infos['short_reads']['name']}
@@ -101,7 +102,7 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
         Gene and transcript ids should correspond to ids provided in the coverage_csv_file.
     :param transcript_id_col: Column name with the transcript ids.
         Alternatively, a list of column names can be provided, in which case the transcript id is concatenated from the provided columns,
-        seperated by an underscore ("_"). If not specified, checks for columns 'transcript_id' or ['gene_id', 'transcript_nr'].
+        separated by an underscore ("_"). If not specified, checks for columns 'transcript_id' or ['gene_id', 'transcript_nr'].
     :param sample_cov_cols: Dict with sample names for the new samples as keys, and corresponding coverage column names in coverage_csv_file as values.
         If not specified, a new sample is added for each <name>_coverage column.
     :param sample_properties: Additional properties of the samples, that get added to the sample table, and can be used to group or stratify the samples.
@@ -131,16 +132,16 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
             cov_tab['transcript_id'] = cov_tab.gene_id+'_'+cov_tab.transcript_nr.astype(str)
         else:
             raise ValueError('"transcript_id_col" not specified, and coverage table does not contain "transcript_id", nor "gene_id" and "transcript_nr"')
-        transcript_id_col = 'transcript_id'
     elif isinstance(transcript_id_col, list):
         assert all(c in cov_tab for c in transcript_id_col), 'missing specified transcript_id_col'
         cov_tab['transcript_id'] = ['_'.join(str(v) for v in row) for _, row in cov_tab[transcript_id_col].iterrows()]
-        transcript_id_col = 'transcript_id'
     else:
         assert transcript_id_col in cov_tab, 'missing specified transcript_id_col'
         cov_tab['transcript_id'] = cov_tab[transcript_id_col]
+    # could be optimized, but code is easier when the id column always is transcript_id
+    transcript_id_col = 'transcript_id'
+
     known_sa = set(samples).intersection(self.samples)
-    assert transcript_id_col == 'transcript_id'  # could be optimized, but code is easier when the id column always is transcript_id
     assert not known_sa, 'Attempt to add known samples: %s' % known_sa
     # cov_tab.set_index('transcript_id')
     # assert cov_tab.index.is_unique, 'ambigous transcript ids in %s' % coverage_csv_file
@@ -158,7 +159,7 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
         sample_properties[sa].setdefault('group', sa)
 
     logger.info('adding samples "%s" from csv', '", "'.join(samples))
-    # consider chromosomes not in the referernce?
+    # consider chromosomes not in the reference?
     if add_chromosomes:
         chromosomes = None
     else:
@@ -266,20 +267,20 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
     :param fn: The bam filename of the new sample
     :param sample_name: Name of the new sample. If specified, all reads are assumed to belong to this sample.
     :param barcode_file: For barcoded samples, a file with assignment of sequencing barcodes to sample names.
-        This file should be a tab seperated text file with two columns: the barcode and the sample name
+        This file should be a tab separated text file with two columns: the barcode and the sample name
         Barcodes not listed in this file will be ignored.
-        If sample_name is specified in addition to bacode_file, it will be used as a prefix.
+        If sample_name is specified in addition to barcode_file, it will be used as a prefix.
         Barcodes will be read from the XC tag of the bam file.
     :param fuzzy_junction: maximum size for fuzzy junction correction
     :param add_chromosomes: If True, genes from chromosomes which are not in the Transcriptome yet are added.
-    :param min_mapqual: Minimum mapping quality of the read to be considdered.
+    :param min_mapqual: Minimum mapping quality of the read to be considered.
         A mapping quality of 0 usually means ambigous alignment.
     :param min_align_fraction: Minimum fraction of the read sequence matching the reference.
     :param chimeric_mincov: Minimum number of reads for a chimeric transcript to be considered
     :param min_exonic_ref_coverage: Minimal fraction of exonic overlap to assign to reference transcript if no splice junctions match.
         Also applies to mono-exonic transcripts
     :param use_satag: If True, import secondary alignments (of chimeric alignments) from the SA tag.
-        This should only be specified if the secondary alignment is not reported in a seperate bam entry.
+        This should only be specified if the secondary alignment is not reported in a separate bam entry.
     :param save_readnames: Save a list of the readnames, that contributed to the transcript.
     :param progress_bar: Show the progress.
     :param kwargs: Additional keyword arguments are added to the sample table.'''
@@ -300,7 +301,8 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
             'samples %s are already in the data set.' % ', '.join(sa for sa in barcodes if sa in self.samples)
         logger.info('adding %s transcriptomes in %s groups as specified in %s from file %s',
                     len(set(barcodes.keys())), len(set(barcodes.values())), barcode_file, fn)
-        barcodes.update({rc(k): v for k, v in barcodes.items()})  # add reverse complement
+        # add reverse complement
+        barcodes.update({rc(k): v for k, v in barcodes.items()})
 
     kwargs['file'] = fn
     skip_bc = 0
@@ -329,24 +331,26 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                 # transcripts=IntervalTree()
                 # novel=IntervalTree()
                 chr_len = align.get_reference_length(chrom)
-                transcripts = IntervalArray(chr_len)  # intervaltree was pretty slow for this context
+                transcripts: IntervalArray[Interval] = IntervalArray(chr_len)  # intervaltree was pretty slow for this context
                 novel = IntervalArray(chr_len)
                 n_reads = 0
                 for read in align.fetch(chrom):
                     n_reads += 1
                     pbar.update(.5)
-
-                    if read.flag & 0x4:  # unmapped
+                    # unmapped
+                    if read.flag & 0x4:
                         unmapped += 1
                         continue
-                    if read.flag & 0x700:  # not primary alignment or failed qual check or PCR duplicate
+                    # not primary alignment or failed qual check or PCR duplicate
+                    if read.flag & 0x700:
+                        # use only primary alignments
                         n_secondary += 1
-                        continue  # use only primary alignments
-                    if read.mapping_quality < min_mapqual:  # Mapping quality of 0 usually means ambigous mapping.
+                        continue
+                    # Mapping quality of 0 usually means ambigous mapping.
+                    if read.mapping_quality < min_mapqual:
                         n_lowqual += 1
                         continue
-                    tags = dict(read.tags)
-
+                    tags = dict(read.get_tags())
                     if barcodes:
                         if 'XC' not in tags or tags['XC'] not in barcodes:
                             skip_bc += 1
@@ -355,20 +359,22 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     s_name = sample_name if not barcodes else barcodes[tags['XC']]
                     strand = '-' if read.is_reverse else '+'
                     exons = junctions_from_cigar(read.cigartuples, read.reference_start)
-                    tr_range = (exons[0][0], exons[-1][1])
-                    if tr_range[0] < 0 or tr_range[1] > chr_len:
-                        logger.error('Alignment outside chromosome range: transcript at %s for chromosome %s of length %s', tr_range, chrom, chr_len)
+                    transcript_range = (exons[0][0], exons[-1][1])
+                    if transcript_range[0] < 0 or transcript_range[1] > chr_len:
+                        logger.error('Alignment outside chromosome range: transcript at %s for chromosome %s of length %s', transcript_range, chrom, chr_len)
                         continue
 
                     if 'is' in tags:
-                        cov = tags['is']  # number of actual reads supporting this transcript
+                        # number of actual reads supporting this transcript
+                        cov = tags['is']
                     else:
                         cov = 1
 
-                    # chimeric alignment check
+                    # part of a chimeric alignment
                     if 'SA' in tags or read.flag & 0x800:
                         # store it if it's part of a chimeric alignment and meets the minimum coverage threshold
-                        if chimeric_mincov > 0:  # otherwise ignore chimeric read
+                        # otherwise ignore chimeric read
+                        if chimeric_mincov > 0:
                             chimeric.setdefault(read.query_name, [{s_name: cov}, []])
                             assert chimeric[read.query_name][0][s_name] == cov, \
                                 'error in bam: parts of chimeric alignment for read %s has different coverage information %s != %s' % (
@@ -396,25 +402,24 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
 
                     total_nc_reads_chr[chrom].setdefault(s_name, 0)
                     total_nc_reads_chr[chrom][s_name] += cov
-
-                    # have we seen this transcript already?
-                    for tr_interval in transcripts.overlap(*tr_range):
-                        if tr_interval.data['strand'] != strand:
+                    # did we see this transcript already?
+                    for transcript_interval in transcripts.overlap(*transcript_range):
+                        if transcript_interval.data['strand'] != strand:
                             continue
-                        if splice_identical(exons, tr_interval.data['exons']):
-                            tr = tr_interval.data
-                            tr.setdefault('range', {}).setdefault(tr_range, 0)
-                            tr['range'][tr_range] += cov
+                        if splice_identical(exons, transcript_interval.data['exons']):
+                            transcript = transcript_interval.data
+                            transcript.setdefault('range', {}).setdefault(transcript_range, 0)
+                            transcript['range'][transcript_range] += cov
                             if save_readnames:
-                                tr['reads'].append(read.query_name)
+                                transcript['reads'].append(read.query_name)
                             break
                     else:
-                        tr = {'exons': exons, 'range': {tr_range: cov}, 'strand': strand}
+                        transcript = {'exons': exons, 'range': {transcript_range: cov}, 'strand': strand}
                         if barcodes:
-                            tr['bc_group'] = barcodes[tags['XC']]
+                            transcript['bc_group'] = barcodes[tags['XC']]
                         if save_readnames:
-                            tr['reads'] = [read.query_name]
-                        transcripts.add(Interval(*tr_range, tr))
+                            transcript['reads'] = [read.query_name]
+                        transcripts.add(Interval(*transcript_range, transcript))
                     # if genome_fh is not None:
                     #    mutations=get_mutations(read.cigartuples, read.query_sequence, genome_fh, chrom,read.reference_start,read.query_qualities)
                     #    for pos,ref,alt,qual in mutations:
@@ -424,35 +429,31 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     #            tr['mutations'][sample_name][pos][alt][1].append(qual) #assuming the quality already accounts for cov>1
 
                     if 4 in read.cigartuples:  # clipping
-                        s_name = sample_name if not barcodes else barcodes[tags['XC']]
                         clip = get_clipping(read.cigartuples, read.reference_start)
-                        tr.setdefault('clipping', {}).setdefault(s_name, {}).setdefault(clip, 0)
-                        tr['clipping'][s_name][clip] += cov
+                        transcript.setdefault('clipping', {}).setdefault(s_name, {}).setdefault(clip, 0)
+                        transcript['clipping'][s_name][clip] += cov
 
-                for tr_interval in transcripts:
-                    tr = tr_interval.data
-                    tr_ranges = tr.pop('range')
-                    # tr_ranges=tr['range']
+                for transcript_interval in transcripts:
+                    transcript = transcript_interval.data
+                    transcript_ranges = transcript.pop('range')
                     starts, ends = {}, {}
-                    for r, cov in tr_ranges.items():
-                        starts[r[0]] = starts.get(r[0], 0) + cov
-                        ends[r[1]] = ends.get(r[1], 0) + cov
-
+                    for range, cov in transcript_ranges.items():
+                        starts[range[0]] = starts.get(range[0], 0) + cov
+                        ends[range[1]] = ends.get(range[1], 0) + cov
                     # get the median TSS/PAS
-                    tr['exons'][0][0] = get_quantiles(starts.items(), [0.5])[0]
-                    tr['exons'][-1][1] = get_quantiles(ends.items(), [0.5])[0]
-                    cov = sum(tr_ranges.values())
-                    s_name = tr.get('bc_group', sample_name)
-                    tr['coverage'] = {s_name: cov}
-                    tr['TSS'] = {s_name: starts if tr['strand'] == '+' else ends}
-                    tr['PAS'] = {s_name: starts if tr['strand'] == '-' else ends}
+                    transcript['exons'][0][0] = get_quantiles(starts.items(), [0.5])[0]
+                    transcript['exons'][-1][1] = get_quantiles(ends.items(), [0.5])[0]
+                    cov = sum(transcript_ranges.values())
+                    s_name = transcript.get('bc_group', sample_name)
+                    transcript['coverage'] = {s_name: cov}
+                    transcript['TSS'] = {s_name: starts if transcript['strand'] == '+' else ends}
+                    transcript['PAS'] = {s_name: starts if transcript['strand'] == '-' else ends}
 
-                    # add the transcript to the sample's gene or mark as novel
-                    gene = _add_sample_transcript(self, tr, chrom, fuzzy_junction, min_exonic_ref_coverage)
+                    gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage)
                     if gene is None:
-                        novel.add(tr_interval)
+                        novel.add(transcript_interval)
                     else:
-                        _ = tr.pop('bc_group', None)
+                        _ = transcript.pop('bc_group', None)
 
                     # update the total number of reads processed
                     n_reads -= cov
@@ -502,16 +503,16 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         novel = dict()
         try:
             tss, pas = (exons[0][0], exons[-1][1]) if strand == '+' else (exons[-1][1], exons[0][0])
-            tr = {'exons': exons, 'coverage': cov, 'TSS': {sa: {tss: c} for sa, c in cov.items()}, 'PAS': {sa: {pas: c} for sa, c in cov.items()},
+            transcript = {'exons': exons, 'coverage': cov, 'TSS': {sa: {tss: c} for sa, c in cov.items()}, 'PAS': {sa: {pas: c} for sa, c in cov.items()},
                   'strand': strand, 'chr': chrom, 'long_intron_chimeric': introns}
             if save_readnames:
-                tr['reads'] = {s_name: [readname]}
+                transcript['reads'] = {s_name: [readname]}
         except BaseException:
             logger.error('\n\n-->%s\n\n', (exons[0][0], exons[-1][1]) if strand == "+" else (exons[-1][1], exons[0][0]))
             raise
-        gene = _add_sample_transcript(self, tr, chrom, fuzzy_junction, min_exonic_ref_coverage)  # tr is not updated
+        gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage)  # tr is not updated
         if gene is None:
-            novel.setdefault(chrom, []).append(tr)
+            novel.setdefault(chrom, []).append(transcript)
         for chrom in novel:
             _ = _add_novel_genes(self, IntervalTree(Interval(tr['exons'][0][0], tr['exons'][-1][1], tr) for tr in novel[chrom]), chrom)
 
@@ -1043,7 +1044,7 @@ def _read_gff_file(file_name, chromosomes, progress_bar=True):
             try:
                 info = dict([pair.split('=', 1) for pair in ls[8].rstrip(';').split(";")])  # some gff lines end with ';' in gencode 36
             except ValueError:
-                logger.warning("GFF format error in infos (should be ; seperated key=value pairs). Skipping line:\n%s", line)
+                logger.warning("GFF format error in infos (should be ; separated key=value pairs). Skipping line:\n%s", line)
             start, end = [int(i) for i in ls[3:5]]
             start -= 1  # to make 0 based
             if ls[2] == "exon":
@@ -1087,7 +1088,7 @@ def import_ref_transcripts(fn, transcriptome, file_format, chromosomes=None, gen
         logger.info('skipped the following categories: %s', skipped)
 
     logger.debug('construct interval trees for genes...')
-    genes = {}
+    genes: dict[str, IntervalTree[Gene]] = {}
     for chrom in gene_infos:
         for info, _, _ in gene_infos[chrom].values():
             try:
@@ -1227,7 +1228,7 @@ def get_mutations(cigartuples, seq, ref_start, qual):
 
 
 def aligned_part(cigartuples, is_reverse):
-    "returns the interval of the trasncript that is aligned (e.g. not clipped) according to cigar. Positions are according to transcript strand"
+    "returns the interval of the transcript that is aligned (e.g. not clipped) according to cigar. Positions are according to transcript strand"
     start = end = 0
     for cigar in reversed(cigartuples) if is_reverse else cigartuples:
         if cigar[0] in (0, 1, 7, 8):  # MI=X -> move forward on read:
@@ -1616,8 +1617,8 @@ def _mats_alt_splice_export(setA, setB, nodeX, nodeY, st, reference, g, offset, 
     return [[offset + count] + l for count, l in enumerate(lines)]
 
 
-def get_gff_chrom_dict(gff, chromosomes):
-    'fetch chromosome ids - in case they use ids in gff for the chormosomes'
+def get_gff_chrom_dict(gff: TabixFile, chromosomes):
+    'fetch chromosome ids - in case they use ids in gff for the chromosomes'
     chrom = {}
     for c in gff.contigs:
         # loggin.debug ("---"+c)
@@ -1643,19 +1644,22 @@ class IntervalArray:
     '''drop in replacement for the interval tree during construction, with faster lookup'''
 
     def __init__(self, total_size, bin_size=1e4):
-        self.obj = {}
+        self.obj: dict[str, Interval] = {}
         self.data = [set() for _ in range(int((total_size) // bin_size) + 1)]
         self.bin_size = bin_size
 
-    def overlap(self, begin, end):
+    def overlap(self, begin, end) -> Generator[Interval, None, None]:
         try:
-            candidates = {obj_id for idx in range(int(begin // self.bin_size), int(end // self.bin_size) + 1) for obj_id in self.data[idx]}
+            candidates = {obj_id
+                          for idx in range(int(begin // self.bin_size), int(end // self.bin_size) + 1)
+                          for obj_id in self.data[idx]}
         except IndexError:
             logger.error('requesting interval between %s and %s, but array is allocated only until position %s', begin, end, len(self.data)*self.bin_size)
             raise
-        return (self.obj[obj_id] for obj_id in candidates if has_overlap((begin, end), self.obj[obj_id]))  # this assumes object has range obj[0] to obj[1]
+        # this assumes object has range obj[0] to obj[1]
+        return (self.obj[obj_id] for obj_id in candidates if has_overlap((begin, end), self.obj[obj_id]))
 
-    def add(self, obj):
+    def add(self, obj: Interval):
         self.obj[id(obj)] = obj
         try:
             for idx in range(int(obj.begin // self.bin_size), int(obj.end // self.bin_size) + 1):
