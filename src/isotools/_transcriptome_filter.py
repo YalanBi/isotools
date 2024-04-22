@@ -50,7 +50,7 @@ def add_orf_prediction(self, genome_fn, progress_bar=True, filter_transcripts={}
     (UTR and CDS lengths, Kozak score, Fickett score, hexamer score and NMD prediction). The hexamer score depends on hexamer frequency table,
     see CPAT python module for prebuild tables and instructions.
 
-    :param geneome_fn: Path to the genome in fastA format.
+    :param genome_fn: Path to the genome in fastA format.
     :param min_len: Minimum length of the ORF, Does not apply to annotated initiation sites.
     :param min_kozak: Minimal score for translation initiation site. Does not apply to annotated initiation sites.
     :param max_5utr_len: Maximal length of the 5'UTR region. Does not apply to annotated initiation sites.
@@ -100,7 +100,7 @@ def add_qc_metrics(self, genome_fn, progress_bar=True, downstream_a_len=30, dire
     In particular, the direct repeat length, the downstream adenosine content and information about non-canonical splice sites are fetched.
     In addition, genes are scanned for transcripts that are fully contained in other transcripts.
 
-    :param geneome_fn: Path to the genome in fastA format.
+    :param genome_fn: Path to the genome in fastA format.
     :param downstream_a_len: The number of bases downstream the transcript where the adenosine fraction is determined.
     :param direct_repeat_wd: The number of bases around the splice sites scanned for direct repeats.
     :param direct_repeat_wobble: Number of bases the splice site sequences are shifted.
@@ -240,13 +240,13 @@ def iter_genes(self, region=None, query=None, min_coverage=None, max_coverage=No
             genes = [g for g in genes if g.id in gois or g.name in gois]
 
     # often some genes take much longer than others - smoothing 0 means avg
-    for g in tqdm(genes, disable=not progress_bar, unit='genes', smoothing=0):
-        if min_coverage is not None and g.coverage.sum() < min_coverage:
+    for gene in tqdm(genes, disable=not progress_bar, unit='genes', smoothing=0):
+        if min_coverage is not None and gene.coverage.sum() < min_coverage:
             continue
-        if max_coverage is not None and g.coverage.sum() > max_coverage:
+        if max_coverage is not None and gene.coverage.sum() > max_coverage:
             continue
-        if query is None or query_fun(**{tag: fun(**g.data) for tag, fun in filter_fun.items()}):
-            yield g
+        if query is None or query_fun(**{tag: fun(**gene.data) for tag, fun in filter_fun.items()}):
+            yield gene
 
 
 def iter_transcripts(self, region=None, query=None, min_coverage=None, max_coverage=None, genewise=False, gois=None, progress_bar=False):
@@ -343,7 +343,7 @@ def iter_ref_transcripts(self, region=None, query=None, genewise=False, gois=Non
 
 def _eval_filter_fun(fun, name, **args):
     '''Decorator for the filter functions, which are lambdas and thus cannot have normal decorators.
-    On exceptions the provided parameters are reported. This is helpfull for debugging.'''
+    On exceptions the provided parameters are reported. This is helpful for debugging.'''
     try:
         return fun(**args)
     except Exception as e:
