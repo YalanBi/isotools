@@ -109,16 +109,19 @@ def junctions_from_cigar(cigartuples, offset):
     'returns the exon positions'
     exons = list([[offset, offset]])
     for cigar in cigartuples:
-        if cigar[0] == 3:  # N ->  Splice junction
-            pos = exons[-1][1]+cigar[1]
+        # N -> Splice junction
+        if cigar[0] == 3:
+            pos = exons[-1][1] + cigar[1]
             if exons[-1][0] == exons[-1][1]:
                 # delete zero length exons
                 # (may occur if insertion within intron, e.g. 10M100N10I100N10M)
                 del exons[-1]
             exons.append([pos, pos])
-        elif cigar[0] in (0, 2, 7, 8):  # MD=X -> move forward on reference
+        # MD=X -> move forward on reference
+        elif cigar[0] in (0, 2, 7, 8):
             exons[-1][1] += cigar[1]
-    if exons[-1][0] == exons[-1][1]:  # delete 0 length exons at the end
+    # delete 0 length exons at the end
+    if exons[-1][0] == exons[-1][1]:
         del exons[-1]
     return exons
 
@@ -141,13 +144,17 @@ def is_same_gene(tr1, tr2, spj_iou_th=0, reg_iou_th=.5):
 
 def splice_identical(tr1, tr2):
     # all splice sites are equal
-    if len(tr1) != len(tr2):  # different number of exons
+    # different number of exons
+    if len(tr1) != len(tr2):
         return False
-    if len(tr1) == 1 and has_overlap(tr1[0], tr2[0]):  # single exon genes
+    # single exon genes
+    if len(tr1) == 1 and has_overlap(tr1[0], tr2[0]):
         return True
-    if tr1[0][1] != tr2[0][1] or tr1[-1][0] != tr2[-1][0]:  # check first and last exons
+    # check end of first and and start of last exon
+    if tr1[0][1] != tr2[0][1] or tr1[-1][0] != tr2[-1][0]:
         return False
-    for e1, e2 in zip(tr1[1:-1], tr2[1:-1]):  # check other exons
+    # check other exons
+    for e1, e2 in zip(tr1[1:-1], tr2[1:-1]):
         if e1[0] != e2[0] or e1[1] != e2[1]:
             return False
     return True
