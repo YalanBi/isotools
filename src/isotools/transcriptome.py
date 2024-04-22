@@ -4,6 +4,7 @@ import logging
 import re
 from intervaltree import IntervalTree  # , Interval
 import pandas as pd
+from typing import Optional
 from ._transcriptome_io import import_ref_transcripts
 from .gene import Gene
 from ._transcriptome_filter import DEFAULT_GENE_FILTER, DEFAULT_TRANSCRIPT_FILTER, DEFAULT_REF_TRANSCRIPT_FILTER, ANNOTATION_VOCABULARY, SPLICE_CATEGORY
@@ -23,13 +24,19 @@ class Transcriptome:
     '''
     # initialization and save/restore data
 
-    def __init__(self, **kwargs):
+    data: dict[str, IntervalTree[Gene]]
+    infos: dict
+    chimeric: dict
+    filter: dict
+    _idx: dict[str, Gene]
+
+    def __init__(self, data: Optional[dict[str, IntervalTree[Gene]]] = None, infos = dict(), chimeric = dict(), filter = dict()):
         '''Constructor method'''
-        if 'data' in kwargs:
-            self.data = kwargs['data']
-            self.infos = kwargs.get('infos', {})
-            self.chimeric = kwargs.get('chimeric', {})
-            self.filter = kwargs.get('filter', {})
+        if data is not None:
+            self.data = data
+            self.infos = infos
+            self.chimeric = chimeric
+            self.filter = filter
             assert 'reference_file' in self.infos
             self.make_index()
 
@@ -40,9 +47,8 @@ class Transcriptome:
         :param reference_file: Reference file in gff3 format or pickle file to restore previously imported annotation
         :type reference_file: str
         :param file_format: Specify the file format of the provided reference_file.
-            If set to "auto" the file type is infrered from the extension.
-        :param chromosome: If reference file is gtf/gff, restrict import on specified chromosomes
-        :param infer_transcrpts: If reference file is gtf, genes and transcripts are infered from "exon" entries, no specific transcript '''
+            If set to "auto" the file type is inferred from the extension.
+        :param chromosome: If reference file is gtf/gff, restrict import on specified chromosomes '''
 
         if file_format == 'auto':
             file_format = os.path.splitext(reference_file)[1].lstrip('.')
@@ -78,23 +84,23 @@ class Transcriptome:
         tr.make_index()
         return tr
 
-    def save(self, pickle_file=None):
+    def save(self, pickle_file: Optional[str] = None):
         '''Saves transcriptome information (including reference) in a pickle file.
 
         :param pickle_file: Filename to save data'''
         if pickle_file is None:
-            pickle_file = self.infos['out_file_name']+'.isotools.pkl'  # key error if not set
+            pickle_file = self.infos['out_file_name'] + '.isotools.pkl'  # key error if not set
         logger.info('saving transcriptome to %s', pickle_file)
         pickle.dump(self, open(pickle_file, 'wb'))
 
     @classmethod
-    def load(cls, pickle_file):
+    def load(cls, pickle_file: str):
         '''Restores transcriptome information from a pickle file.
 
         :param pickle_file: Filename to restore data'''
 
         logger.info('loading transcriptome from %s', pickle_file)
-        tr = pickle.load(open(pickle_file, 'rb'))
+        tr: Transcriptome = pickle.load(open(pickle_file, 'rb'))
         pickled_version = tr.infos.get('isotools_version', '<0.2.6')
         if pickled_version != __version__:
             logger.warning('This is isotools version %s, but data has been pickled with version %s, which may be incompatible', __version__, pickled_version)
