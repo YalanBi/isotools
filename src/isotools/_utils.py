@@ -7,6 +7,7 @@ from tqdm import tqdm
 import builtins
 import logging
 from scipy.stats import chi2_contingency, fisher_exact
+import math
 
 
 # from Kozak et al, NAR, 1987
@@ -142,7 +143,13 @@ def is_same_gene(tr1, tr2, spj_iou_th=0, reg_iou_th=.5):
     return False
 
 
-def splice_identical(tr1, tr2):
+def splice_identical(tr1, tr2, strictness=math.inf):
+    '''
+    Check whether two transcripts are identical in terms of splice sites.
+    :param tr1: transcript 1 as a list of tuples for each exon
+    :param tr2: transcript 2 as a list of tuples for each exon
+    :param strictness: Number of bp that are allowed to differ for transcription start and end sites to be still considered identical.
+    '''
     # all splice sites are equal
     # different number of exons
     if len(tr1) != len(tr2):
@@ -150,6 +157,9 @@ def splice_identical(tr1, tr2):
     # single exon genes
     if len(tr1) == 1 and has_overlap(tr1[0], tr2[0]):
         return True
+    # Check start of first and end of last exon
+    if abs(tr1[0][0] - tr2[0][0]) > strictness or abs(tr1[-1][1] - tr2[-1][1]) > strictness:
+        return False
     # check end of first and and start of last exon
     if tr1[0][1] != tr2[0][1] or tr1[-1][0] != tr2[-1][0]:
         return False

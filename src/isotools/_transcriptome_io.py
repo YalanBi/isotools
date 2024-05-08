@@ -17,6 +17,7 @@ from .decorators import experimental
 import logging
 import gzip as gziplib
 from ._transcriptome_filter import SPLICE_CATEGORY
+import math
 
 logger = logging.getLogger('isotools')
 
@@ -261,7 +262,7 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
 
 def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_junction=5, add_chromosomes=True, min_mapqual=0,
                         min_align_fraction=.75, chimeric_mincov=2, min_exonic_ref_coverage=.25, use_satag=False, save_readnames=False, progress_bar=True,
-                        **kwargs):
+                        strictness=math.inf, **kwargs):
     '''Imports expressed transcripts from bam and adds it to the 'Transcriptome' object.
 
     :param fn: The bam filename of the new sample
@@ -283,6 +284,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         This should only be specified if the secondary alignment is not reported in a separate bam entry.
     :param save_readnames: Save a list of the readnames, that contributed to the transcript.
     :param progress_bar: Show the progress.
+    :param strictness: Number of bp that two transcripts are allowed to differ for transcription start and end sites to be still considered one transcript.
     :param kwargs: Additional keyword arguments are added to the sample table.'''
 
     # todo: one alignment may contain several samples - this is not supported at the moment
@@ -406,7 +408,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     for transcript_interval in transcripts.overlap(*transcript_range):
                         if transcript_interval.data['strand'] != strand:
                             continue
-                        if splice_identical(exons, transcript_interval.data['exons']):
+                        if splice_identical(exons, transcript_interval.data['exons'], strictness=strictness):
                             transcript = transcript_interval.data
                             transcript.setdefault('range', {}).setdefault(transcript_range, 0)
                             transcript['range'][transcript_range] += cov
@@ -449,7 +451,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     transcript['TSS'] = {s_name: starts if transcript['strand'] == '+' else ends}
                     transcript['PAS'] = {s_name: starts if transcript['strand'] == '-' else ends}
 
-                    gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage)
+                    gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage, strictness=strictness)
                     if gene is None:
                         novel.add(transcript_interval)
                     else:
@@ -510,7 +512,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         except BaseException:
             logger.error('\n\n-->%s\n\n', (exons[0][0], exons[-1][1]) if strand == "+" else (exons[-1][1], exons[0][0]))
             raise
-        gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage)  # tr is not updated
+        gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage, strictness=strictness)  # tr is not updated
         if gene is None:
             novel.setdefault(chrom, []).append(transcript)
         for chrom in novel:
@@ -711,7 +713,7 @@ def _add_sample_gene(t, g_start, g_end, g_infos, tr_list, chrom, novel_prefix):
     return best_gene
 
 
-def _add_sample_transcript(t, tr, chrom,  fuzzy_junction, min_exonic_ref_coverage, genes_ol=None):
+def _add_sample_transcript(t, tr, chrom,  fuzzy_junction, min_exonic_ref_coverage, genes_ol=None, strictness=math.inf):
     '''add transcript to gene in chrom - return gene on success and None if no Gene was found.
     If matching transcript is found in gene, transcripts are merged. Coverage, tr TSS/PAS need to be reset.
     Otherwise, a new transcript is added. In this case, splice graph and coverage have to be reset.'''
@@ -725,7 +727,7 @@ def _add_sample_transcript(t, tr, chrom,  fuzzy_junction, min_exonic_ref_coverag
     # check if transcript is already there (e.g. from other sample, or in case of long intron chimeric alignments also same sample):
     for g in genes_ol_strand:
         for tr2 in g.transcripts:
-            if splice_identical(tr2['exons'], tr['exons']):
+            if splice_identical(tr2['exons'], tr['exons'], strictness=strictness):
                 _combine_transcripts(tr2, tr)
                 return g
     # we have a new transcript (not seen in this or other samples)
@@ -737,7 +739,7 @@ def _add_sample_transcript(t, tr, chrom,  fuzzy_junction, min_exonic_ref_coverag
             if shifts:
                 tr.setdefault('fuzzy_junction', []).append(shifts)  # keep the info, mainly for testing/statistics
                 for tr2 in g.transcripts:  # check if correction made it identical to existing
-                    if splice_identical(tr2['exons'], tr['exons']):
+                    if splice_identical(tr2['exons'], tr['exons'], strictness=strictness):
                         tr2.setdefault('fuzzy_junction', []).append(shifts)  # keep the info, mainly for testing/statistics
                         _combine_transcripts(tr2, tr)
                         return g
