@@ -1419,13 +1419,15 @@ def chimeric_table(self, region=None, query=None):  # , star_chimeric=None, illu
 
 
 def write_gtf(self, fn, source='isotools', gzip=False, **filter_args):
-    '''Exports the transcripts in gtf format to a file.
+    '''
+    Exports the transcripts in gtf format to a file.
 
     :param fn: The filename to write the gtf.
     :param source: String for the source column of the gtf file.
-    :param region: Splecify genomic region to export to gtf. If omitted, export whole genome.
-    :param query: Specify transcript filter query.
-    :param gzip: compress the output as gzip.'''
+    :param region: Specify genomic region to export to gtf. If omitted, export whole genome.
+    :param gzip: compress the output as gzip.
+    :param filter_args: Specify transcript filter query.
+    '''
 
     def openfile(fn):
         if gzip:
