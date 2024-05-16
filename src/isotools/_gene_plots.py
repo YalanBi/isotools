@@ -660,7 +660,7 @@ def genome_pos_to_gene_segments(pos, genome_map, strict=True):
 
 def plot_domains(self, source, categories=None, trids=True, ref_trids=False, coding_only=True, label='name', include_utr=False, separate_exons=True,
                  x_ticks='gene', ax=None, dom_space=.8, domain_cols=DOMAIN_COLS,  max_overlap=5, highlight=None, highlight_col='red'):
-    '''Plot exonic part of transcripts, together with protein domanis and annotations.
+    '''Plot exonic part of transcripts, together with protein domains and annotations.
 
     :param source: Source of protein domains, e.g. "annotation", "hmmer" or "interpro", for domains added by the functions
         "add_annotation_domains", "add_hmmer_domains" or "add_interpro_domains" respectively.
