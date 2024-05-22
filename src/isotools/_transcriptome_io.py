@@ -245,7 +245,7 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
             for gid, (g, start, end) in gene_infos[chrom].items():
                 # only transcripts with coverage
                 import_id = g['ID']
-                tr_list = [tr for trid, tr in transcripts[gid].items() if trid in used_transcripts]
+                tr_list = [transcript for transcript_id, transcript in transcripts[gid].items() if transcript_id in used_transcripts]
                 # find best matching overlapping ref gene
                 gene = _add_sample_gene(self, start, end, g, tr_list, chrom, novel_prefix)
                 if import_id != gene.id:
@@ -1330,20 +1330,20 @@ def transcript_table(self,  samples=None,  groups=None, coverage=False, tpm=Fals
 
     rows = []
     cov = []
-    for g, trids, trs in self.iter_transcripts(**filter_args, genewise=True):
+    for g, transcript_ids, transcripts in self.iter_transcripts(**filter_args, genewise=True):
         if sample_i:
-            idx = (slice(None), trids) if all_samples else np.ix_(sample_i, trids)
+            idx = (slice(None), transcript_ids) if all_samples else np.ix_(sample_i, transcript_ids)
             cov.append(g.coverage[idx])
-        for trid, tr in zip(trids, trs):
-            exons = tr['exons']
+        for transcript_id, transcript in zip(transcript_ids, transcripts):
+            exons = transcript['exons']
             trlen = sum(e[1]-e[0] for e in exons)
-            nov_class, subcat = tr['annotation']
+            nov_class, subcat = transcript['annotation']
             # subcat_string = ';'.join(k if v is None else '{}:{}'.format(k, v) for k, v in subcat.items())
             e_starts, e_ends = (','.join(str(exons[i][j]) for i in range(len(exons))) for j in range(2))
-            row = [g.chrom, exons[0][0], exons[-1][1], g.strand, g.id, g.name, trid, trlen, len(exons), e_starts, e_ends,
+            row = [g.chrom, exons[0][0], exons[-1][1], g.strand, g.id, g.name, transcript_id, trlen, len(exons), e_starts, e_ends,
                    SPLICE_CATEGORY[nov_class], ','.join(subcat)]
             for k in extra_columns:
-                val = tr.get(k, 'NA')
+                val = transcript.get(k, 'NA')
                 row.append(str(val) if isinstance(val, Iterable) else val)
             rows.append(row)
 
@@ -1413,7 +1413,7 @@ def chimeric_table(self, region=None, query=None):  # , star_chimeric=None, illu
 #                   for idx in idx_ol:
 #                       chim_tab[idx][offset + sa_idx] += 1
 #
-#    chim_tab = pd.DataFrame(chim_tab, columns=['trid', 'len', 'gene1', 'part1', 'breakpoint1', 'gene2', 'part2', 'breakpoint2',
+#    chim_tab = pd.DataFrame(chim_tab, columns=['transcript_id', 'len', 'gene1', 'part1', 'breakpoint1', 'gene2', 'part2', 'breakpoint2',
 #                            'total_cov'] + [s + '_cov' for s in self.infos['sample_table'].name] + [s + "_shortread_cov" for s in star_chimeric])
 #    return chim_tab
 
@@ -1437,9 +1437,9 @@ def write_gtf(self, fn, source='isotools', gzip=False, **filter_args):
 
     with openfile(fn) as f:
         logger.info('writing %sgtf file to %s', "gzip compressed " if gzip else "", fn)
-        for g, trids, _ in self.iter_transcripts(genewise=True, **filter_args):
-            lines = g._to_gtf(trids=trids, source=source)
-            _ = f.write('\n'.join(('\t'.join(str(field) for field in line) for line in lines)) + '\n')
+        for g, transcript_ids, _ in self.iter_transcripts(genewise=True, **filter_args):
+            lines = g._to_gtf(transcript_ids=transcript_ids, source=source)
+            f.write('\n'.join(('\t'.join(str(field) for field in line) for line in lines)) + '\n')
 
 
 def export_alternative_splicing(self, out_dir, out_format='mats', reference=False, min_total=100,

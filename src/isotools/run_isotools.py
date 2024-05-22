@@ -220,13 +220,13 @@ def altsplice_plots(isoseq, groups, filename, progress_bar):
 
 def altsplice_examples(isoseq, n, query='not FSM'):  # return the top n covered genes for each category
     examples = {}
-    for g, trids, trs in isoseq.iter_transcripts(query=query, genewise=True):
+    for g, transcript_ids, transcripts in isoseq.iter_transcripts(query=query, genewise=True):
         total_cov = g.coverage.sum()
-        for trid, tr in zip(trids, trs):
-            cov = g.coverage[:, trid].sum()
+        for transcript_id, transcript in zip(transcript_ids, transcripts):
+            cov = g.coverage[:, transcript_id].sum()
             score = cov*cov/total_cov
-            for cat in tr['annotation'][1]:
-                examples.setdefault(cat, []).append((score, g.name, g.id, trid, cov, total_cov))
+            for cat in transcript['annotation'][1]:
+                examples.setdefault(cat, []).append((score, g.name, g.id, transcript_id, cov, total_cov))
 
     examples = {k: sorted(v, key=lambda x: -x[0]) for k, v in examples.items()}
     return {k: v[:n] for k, v in examples.items()}
@@ -244,26 +244,26 @@ def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, 
     plt.rcParams["figure.figsize"] = (20, 5*nplots)
 
     for cat, best_list in examples.items():
-        logger.debug(cat+str(best_list))
-        for i, (score, gene_name, gene_id, trid,  cov, total_cov) in enumerate(best_list):
+        logger.debug(cat + str(best_list))
+        for i, (score, gene_name, gene_id, transcript_id,  cov, total_cov) in enumerate(best_list):
             g = isoseq[gene_id]
             try:
-                info = g.transcripts[trid]["annotation"][1][cat]
+                info = g.transcripts[transcript_id]["annotation"][1][cat]
             except TypeError:
                 info = list()
-            logger.info(f'{i+1}. best example for {cat}: {gene_name} {trid} {info}, {cov} {total_cov} ({cov/total_cov:%})')
+            logger.info(f'{i + 1}. best example for {cat}: {gene_name} {transcript_id} {info}, {cov} {total_cov} ({cov/total_cov:%})')
             joi = []  # set joi
 
             if info:
                 junctions = []
                 if cat == 'exon skipping':
-                    exons = g.transcripts[trid]['exons']
+                    exons = g.transcripts[transcript_id]['exons']
                     for pos in info:
                         idx = next(i for i, e in enumerate(exons) if e[0] > pos[0])
-                        junctions.append((exons[idx-1][1], exons[idx][0]))
+                        junctions.append((exons[idx - 1][1], exons[idx][0]))
                     info = junctions
                 elif cat == 'novel exon':
-                    exons = g.transcripts[trid]['exons']
+                    exons = g.transcripts[transcript_id]['exons']
                     for i, e in enumerate(exons[1:-1]):
                         if e in info:
                             junctions.extend([(exons[i][1], e[0]), (e[1], exons[i+2][0])])

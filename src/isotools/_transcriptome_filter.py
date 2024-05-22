@@ -116,7 +116,7 @@ def add_qc_metrics(self, genome_fn, progress_bar=True, downstream_a_len=30, dire
 
         for g in self.iter_genes(progress_bar=progress_bar):
             if unify_ends:
-                # remove segmet graph (if unify TSS/PAS option selected)
+                # remove segment graph (if unify TSS/PAS option selected)
                 g.data['segment_graph'] = None
                 # "unify" TSS/PAS (if unify TSS/PAS option selected)
                 g._unify_ends()
@@ -161,11 +161,11 @@ def add_filter(self, tag, expression, context='transcript', update=False):
     if context == 'gene':
         attributes = {k for g in self for k in g.data.keys() if k.isidentifier()}
     else:
-        attributes = {'g', 'trid'}
+        attributes = {'g', 'transcript_id'}
         if context == 'transcript':
-            attributes.update({k for g in self for tr in g.transcripts for k in tr.keys() if k.isidentifier()})
+            attributes.update({k for g in self for transcript in g.transcripts for k in transcript.keys() if k.isidentifier()})
         elif context == 'reference':
-            attributes.update({k for g in self if g.is_annotated for tr in g.ref_transcripts for k in tr.keys() if k.isidentifier()})
+            attributes.update({k for g in self if g.is_annotated for transcript in g.ref_transcripts for k in transcript.keys() if k.isidentifier()})
 
     # test whether the expression can be evaluated
     try:
@@ -359,12 +359,12 @@ def _filter_transcripts(g, transcripts,  query_fun, filter_fun, g_filter_eval, m
 
     :param query_fun: function to be evaluated on tags
     :param filter_fun: tags to be evalutated on transcripts'''
-    for i, tr in enumerate(transcripts):
+    for i, transcript in enumerate(transcripts):
         if mincoverage and g.coverage[:, i].sum() < mincoverage:
             continue
         if maxcoverage and g.coverage[:, i].sum() > maxcoverage:
             continue
         query_result = query_fun is None or query_fun(
-            **g_filter_eval, **{tag: _eval_filter_fun(f, tag, g=g, trid=i, **tr) for tag, f in filter_fun.items()})
+            **g_filter_eval, **{tag: _eval_filter_fun(f, tag, g=g, transcript_id=i, **transcript) for tag, f in filter_fun.items()})
         if query_result:
-            yield i, tr
+            yield i, transcript

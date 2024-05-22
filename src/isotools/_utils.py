@@ -456,13 +456,13 @@ def prepare_contingency_table(eventA, eventB, coverage):
     '''
 
     con_tab = np.zeros((2, 2), dtype=int)
-    trid_tab = np.zeros((2, 2), dtype=object)
+    transcript_id_table = np.zeros((2, 2), dtype=object)
 
     for m, n in itertools.product(range(2), range(2)):
-        trids = sorted(set(eventA[m]) & set(eventB[n]), key=coverage.__getitem__, reverse=True)
-        trid_tab[n, m] = trids
-        con_tab[n, m] = coverage[trids].sum()
-    return con_tab, trid_tab
+        transcript_ids = sorted(set(eventA[m]) & set(eventB[n]), key=coverage.__getitem__, reverse=True)
+        transcript_id_table[n, m] = transcript_ids
+        con_tab[n, m] = coverage[transcript_ids].sum()
+    return con_tab, transcript_id_table
 
 
 def pairwise_event_test(con_tab, test="fisher", pseudocount=.01):

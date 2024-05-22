@@ -439,23 +439,23 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
     for g in ol_genes:
         select_tr = g.filter_ref_transcripts(query) if reference else g.filter_transcripts(query, min_coverage, max_coverage)
         if select_transcripts.get(g.name):
-            select_tr = [trid for trid in select_tr if trid in select_transcripts.get(g.name)]
+            select_tr = [transcript_id for transcript_id in select_tr if transcript_id in select_transcripts.get(g.name)]
         if reference:  # select transcripts and sort by start
-            transcript_list.extend([(g, tr_nr, tr) for tr_nr, tr in enumerate(g.ref_transcripts) if tr_nr in select_tr])
+            transcript_list.extend([(g, transcript_nr, transcript) for transcript_nr, transcript in enumerate(g.ref_transcripts) if transcript_nr in select_tr])
         else:
             transcript_list.extend([(g, tr_nr, tr) for tr_nr, tr in enumerate(g.transcripts) if tr_nr in select_tr])
     transcript_list.sort(key=lambda x: x[2]['exons'][0][0])  # sort by start position
 
-    for g, tr_nr, tr in transcript_list:
-        tr_start, tr_end = tr['exons'][0][0], tr['exons'][-1][1]
+    for g, tr_nr, transcript in transcript_list:
+        tr_start, tr_end = transcript['exons'][0][0], transcript['exons'][-1][1]
         if (tr_end < x_range[0] or tr_start > x_range[1]):  # transcript does not overlap x_range
             continue
-        trid = '> ' if g.strand == '+' else '< '  # indicate the strand like in ensembl browser
-        trid += tr['transcript_name'] if 'transcript_name' in tr else f'{g.name}_{tr_nr}'
+        transcript_id = '> ' if g.strand == '+' else '< '  # indicate the strand like in ensembl browser
+        transcript_id += transcript['transcript_name'] if 'transcript_name' in transcript else f'{g.name}_{tr_nr}'
 
         # find next line that is not blocked
         try:
-            i = next(idx for idx, last in enumerate(blocked) if last < tr['exons'][0][0])
+            i = next(idx for idx, last in enumerate(blocked) if last < transcript['exons'][0][0])
         except StopIteration:
             i = len(blocked)
             blocked.append(tr_end)
@@ -470,11 +470,11 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
         ax.plot((tr_start, tr_end), [i + .25] * 2, color=color)
         if label_transcripts:
             pos = (max(tr_start, x_range[0]) + min(tr_end, x_range[1])) / 2
-            ax.text(pos, i - .02, trid, ha='center', va='top', fontsize=label_fontsize, clip_on=True)
-        for j, (st, end) in enumerate(tr['exons']):
+            ax.text(pos, i - .02, transcript_id, ha='center', va='top', fontsize=label_fontsize, clip_on=True)
+        for j, (st, end) in enumerate(transcript['exons']):
             cds = None
-            if 'CDS' in tr or 'ORF' in tr:
-                cds = tr['CDS'] if 'CDS' in tr else tr['ORF']
+            if 'CDS' in transcript or 'ORF' in transcript:
+                cds = transcript['CDS'] if 'CDS' in transcript else transcript['ORF']
             if cds is not None and cds[0] <= end and cds[1] >= st:  # CODING exon
                 c_st, c_end = max(st, cds[0]), min(cds[1], end)  # coding start and coding end
                 if c_st > st:  # first noncoding part
@@ -490,7 +490,7 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
                 rect = patches.Rectangle((st, i + .125), (end - st), .25, linewidth=1, edgecolor=color, facecolor=color)
                 ax.add_patch(rect)
             if label_exon_numbers and (end > x_range[0] and st < x_range[1]):
-                enr = j + 1 if g.strand == '+' else len(tr['exons']) - j
+                enr = j + 1 if g.strand == '+' else len(transcript['exons']) - j
                 pos = (max(st, x_range[0]) + min(end, x_range[1])) / 2
                 ax.text(pos, i + .25, enr, ha='center', va='center', color=contrast, fontsize=label_fontsize,
                         clip_on=True)  # bbox=dict(boxstyle='round', facecolor='wheat',edgecolor=None,  alpha=0.5)
@@ -583,15 +583,15 @@ def get_patches(blocks, orf, h, w1=.1, w2=.5, connect=True, **kwargs):
 
 
 def find_segments(transcripts, orf_only=True, separate_exons=False):
-    '''Find exonic parts of the gene, with respect to trids.'''
+    '''Find exonic parts of the gene, with respect to transcript_ids.'''
     if orf_only:
         exon_list = []
-        for tr in transcripts:
-            cds_pos = tr.get('CDS', tr.get('ORF'))
+        for transcript in transcripts:
+            cds_pos = transcript.get('CDS', transcript.get('ORF'))
             exon_list.append([])
             if cds_pos is None:
                 continue
-            for e in tr['exons']:
+            for e in transcript['exons']:
                 if e[1] < cds_pos[0]:
                     continue
                 if e[0] > cds_pos[1]:
@@ -658,15 +658,15 @@ def genome_pos_to_gene_segments(pos, genome_map, strict=True):
     return {p: mp for p, mp in zip(pos, mapped_pos)}
 
 
-def plot_domains(self, source, categories=None, trids=True, ref_trids=False, coding_only=True, label='name', include_utr=False, separate_exons=True,
+def plot_domains(self, source, categories=None, transcript_ids=True, ref_transcript_ids=False, coding_only=True, label='name', include_utr=False, separate_exons=True,
                  x_ticks='gene', ax=None, dom_space=.8, domain_cols=DOMAIN_COLS,  max_overlap=5, highlight=None, highlight_col='red'):
     '''Plot exonic part of transcripts, together with protein domains and annotations.
 
     :param source: Source of protein domains, e.g. "annotation", "hmmer" or "interpro", for domains added by the functions
         "add_annotation_domains", "add_hmmer_domains" or "add_interpro_domains" respectively.
     :param categories: List of domain categories to be depicted, default: all categories.
-    :param trids: List of transcript indices to be depicted. If True/False, all/none transcripts are depicted.
-    :param ref_trids: List of reference transcript indices to be depicted. If True/False, all/none reference transcripts are depicted.
+    :param transcript_ids: List of transcript indices to be depicted. If True/False, all/none transcripts are depicted.
+    :param ref_transcript_ids: List of reference transcript indices to be depicted. If True/False, all/none reference transcripts are depicted.
     :param coding_only: Depict only transcripts with annotated ORF/CDS (requires include_utr=True)
     :param label: Specify the type of label: eiter None, or id, or name.
     :param include_utr: If set True, the untranslated regions are also depicted.
@@ -689,15 +689,15 @@ def plot_domains(self, source, categories=None, trids=True, ref_trids=False, cod
     assert x_ticks in ["gene", "genome"], f'x_ticks should be "gene" or "genome", not "{x_ticks}"'
     if not include_utr:
         assert coding_only, 'coding_only can be set only if include_utr is also set.'
-    if isinstance(trids, bool):
-        trids = list(range(len(self.transcripts))) if trids else []
+    if isinstance(transcript_ids, bool):
+        transcript_ids = list(range(len(self.transcripts))) if transcript_ids else []
     if coding_only:
-        trids = [trid for trid in trids if 'ORF' in self.transcripts[trid] or 'CDS' in self.transcripts[trid]]
-    if isinstance(ref_trids, bool):
-        ref_trids = list(range(len(self.ref_transcripts))) if ref_trids else []
+        transcript_ids = [transcript_id for transcript_id in transcript_ids if 'ORF' in self.transcripts[transcript_id] or 'CDS' in self.transcripts[transcript_id]]
+    if isinstance(ref_transcript_ids, bool):
+        ref_transcript_ids = list(range(len(self.ref_transcripts))) if ref_transcript_ids else []
     if coding_only:
-        ref_trids = [trid for trid in ref_trids if 'ORF' in self.ref_transcripts[trid] or 'CDS' in self.ref_transcripts[trid]]
-    transcripts = [(i, self.ref_transcripts[i]) for i in ref_trids] + [(i, self.transcripts[i]) for i in trids]
+        ref_transcript_ids = [transcript_id for transcript_id in ref_transcript_ids if 'ORF' in self.ref_transcripts[transcript_id] or 'CDS' in self.ref_transcripts[transcript_id]]
+    transcripts = [(i, self.ref_transcripts[i]) for i in ref_transcript_ids] + [(i, self.transcripts[i]) for i in transcript_ids]
     n_tr = len(transcripts)
     if not transcripts:
         logger.error('no transcripts with ORF specified')
@@ -730,12 +730,12 @@ def plot_domains(self, source, categories=None, trids=True, ref_trids=False, cod
             else:  # draw line
                 ax.vlines(pos_map[pos], -n_tr, 1, colors=[highlight_col])
 
-    for line, (trid, tr) in enumerate(transcripts):
+    for line, (transcript_id, transcript) in enumerate(transcripts):
         seg = segments[line]
         if include_utr:
             try:
-                orf_pos = tr.get('CDS', tr['ORF'])[:2]
-                orf_trpos = sorted(self.find_transcript_positions(trid, orf_pos, reference=line < len(ref_trids)))
+                orf_pos = transcript.get('CDS', transcript['ORF'])[:2]
+                orf_trpos = sorted(self.find_transcript_positions(transcript_id, orf_pos, reference=line < len(ref_transcript_ids)))
                 orf_blocks = find_blocks(orf_trpos, seg, True)
                 orf_segpos = [orf_blocks[0][0], orf_blocks[-1][1]]
             except KeyError:
@@ -751,7 +751,7 @@ def plot_domains(self, source, categories=None, trids=True, ref_trids=False, cod
         if orf_segpos is None:
             continue
 
-        domains = [dom for dom in tr.get('domain', {}).get(source, []) if categories is None or dom[2] in categories]
+        domains = [dom for dom in transcript.get('domain', {}).get(source, []) if categories is None or dom[2] in categories]
         # sort by length
         domains.sort(key=lambda x: x[3][1]-x[3][0], reverse=True)
         # get positions relative to segments
@@ -795,5 +795,5 @@ def plot_domains(self, source, categories=None, trids=True, ref_trids=False, cod
         xticks = [0]+list(np.cumsum([abs(seg[1]-seg[0]) for seg in genome_map]))
         xticklabels = [str(genome_map[0][0])]+[f'{seg[0][1]}|{seg[1][0]}' for seg in pairwise(genome_map)] + [str(genome_map[-1][1])]
         ax.set_xticks(ticks=xticks, labels=xticklabels)
-    ax.set_yticks(ticks=[-i for i in range(len(transcripts))], labels=[tr.get('transcript_name', f'{self.name} {trid}') for trid, tr in transcripts])
+    ax.set_yticks(ticks=[-i for i in range(len(transcripts))], labels=[transcript.get('transcript_name', f'{self.name} {transcript_id}') for transcript_id, transcript in transcripts])
     return ax, genome_map
