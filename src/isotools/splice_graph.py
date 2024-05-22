@@ -951,13 +951,11 @@ class SegmentGraph():
             for node_id, transcript_set in tss.items():
                 alt_tr = [transcript_id for transcript_id, pas in enumerate(self._pas) if transcript_id not in transcript_set and pas > node_id]
                 if alt_tr:
-                    print(node_id, alt_tr, list(transcript_set), tss_start[node_id], node_id, alt_types[0])
                     yield (alt_tr, list(transcript_set), tss_start[node_id], node_id, alt_types[0])
         if alt_types[1] in types:
             for node_id, transcript_set in pas.items():
                 alt_tr = [transcript_id for transcript_id, tss in enumerate(self._tss) if transcript_id not in transcript_set and tss < node_id]
                 if alt_tr:
-                    print(node_id, alt_tr, list(transcript_set), node_id, pas_end[node_id], alt_types[1])
                     yield (alt_tr, list(transcript_set), node_id, pas_end[node_id], alt_types[1])
 
     def is_exonic(self, position):
