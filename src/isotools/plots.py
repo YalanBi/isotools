@@ -39,15 +39,15 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
     f, axs = plt.subplots(*grid_shape)
     axs = axs.flatten()
     x = [i / 100 for i in range(101)]
-    group_names = [c[:-4] for c in result_table.columns if c.endswith('_PSI')][:2]
-    groups = {gn: [c[:c.rfind(gn)-1] for c in result_table.columns if c.endswith(gn + '_total_cov')] for gn in group_names}
+    group_names = [col[:-4] for col in result_table.columns if col.endswith('_PSI')][:2]
+    groups = {group_name: [col[:col.rfind(group_name)-1] for col in result_table.columns if col.endswith(group_name + '_total_cov')] for group_name in group_names}
     if group_colors is None:
         group_colors = ['C0', 'C1']
     if isinstance(group_colors, list):
         group_colors = dict(zip(group_names, group_colors))
     if sample_colors is None:
         sample_colors = {}
-    sample_colors = {sa: sample_colors.get(sa, group_colors[gn]) for gn in group_names for sa in groups[gn]}
+    sample_colors = {sample: sample_colors.get(sample, group_colors[name]) for name in group_names for sample in groups[name]}
     other = {group_names[0]: group_names[1], group_names[1]: group_names[0]}
     logger.debug('groups: %s', str(groups))
     for idx, row in result_table.iterrows():
@@ -56,7 +56,7 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
             continue
         if row.gene in plotted:
             continue
-        params_alt = {gn: (row[f'{gn}_PSI'], row[f'{gn}_disp']) for gn in group_names}
+        params_alt = {group_name: (row[f'{group_name}_PSI'], row[f'{group_name}_disp']) for group_name in group_names}
         # select only samples covered >= min_cov
         # psi_gr = {gn: [row[f'{sa}_in_cov'] / row[f'{sa}_total_cov'] for sa in gr if row[f'{sa}_total_cov'] >= min_cov] for gn, gr in groups.items()}
         psi_gr_list = [(sa, gn, row[f'{sa}_{gn}_in_cov'] / row[f'{sa}_{gn}_total_cov'])
@@ -75,18 +75,18 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
         # ax.boxplot([mut,wt], labels=['mut','wt'])
         sns.swarmplot(data=psi_gr, x='psi', y='group', hue='sample', orient='h', size=np.sqrt(pt_size), palette=sample_colors, ax=ax)
         ax.legend([], [], frameon=False)
-        for i, gn in enumerate(group_names):
-            max_i = int(params_alt[gn][0] * (len(x) - 1))
+        for i, group_name in enumerate(group_names):
+            max_i = int(params_alt[group_name][0] * (len(x) - 1))
             ax2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
-            if params_alt[gn][1] > 0:
-                m, v = params_alt[gn]
+            if params_alt[group_name][1] > 0:
+                m, v = params_alt[group_name]
                 params = ((-m * (m**2 - m + v)) / v, ((m - 1) * (m**2 - m + v)) / v)
                 y = beta(*params).pdf(x)
-                y[max_i] = beta(*params).pdf(params_alt[gn][0])
+                y[max_i] = beta(*params).pdf(params_alt[group_name][0])
             else:
                 y = np.zeros(len(x))
                 y[max_i] = 1  # point mass
-            ax2.plot(x, y, color=group_colors[gn], lw=lw, ls=ls)
+            ax2.plot(x, y, color=group_colors[group_name], lw=lw, ls=ls)
             ax2.tick_params(right=False, labelright=False)
         ax.set_title(f'{row.gene} {row.splice_type}\nFDR={row.padj:.5f}')
         plotted[row.gene] = row
@@ -346,9 +346,9 @@ def plot_rarefaction(rarefaction, total=None,  ax=None, legend=True, colors=None
         _, ax = plt.subplots()
     if colors is None:
         colors = {}
-    for sa in rarefaction.columns:
-        ax.plot([float(f) * total[sa] / 1e6 if total is not None else float(f)*100 for f in rarefaction.index], rarefaction[sa],
-                label=sa, ls=ls, lw=lw, color=colors.get(sa, None))
+    for sample in rarefaction.columns:
+        ax.plot([float(f) * total[sample] / 1e6 if total is not None else float(f)*100 for f in rarefaction.index], rarefaction[sample],
+                label=sample, ls=ls, lw=lw, color=colors.get(sample, None))
 
     axparams.setdefault('title', 'Rarefaction Analysis')  # [nr],{'fontsize':20}, loc='left', pad=10)
     axparams.setdefault('ylabel', 'Number of discovered Transcripts')

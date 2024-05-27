@@ -171,8 +171,8 @@ class Gene(Interval):
 
         :param genome_fh: A file handle of the genome fastA file.'''
         ss_seq = {}
-        for tr in self.transcripts:
-            pos = [(tr['exons'][i][1], tr['exons'][i + 1][0] - 2) for i in range(len(tr['exons']) - 1)]
+        for transcript in self.transcripts:
+            pos = [(transcript['exons'][i][1], transcript['exons'][i + 1][0] - 2) for i in range(len(transcript['exons']) - 1)]
             new_ss_seq = {site: genome_fh.fetch(self.chrom, site, site + 2).upper() for intron in pos for site in intron if site not in ss_seq}
             if new_ss_seq:
                 ss_seq.update(new_ss_seq)
@@ -184,7 +184,7 @@ class Gene(Interval):
 
             nc = [(i, seq) for i, seq in enumerate(sj_seq) if seq != 'GTAG']
             if nc:
-                tr['noncanonical_splicing'] = nc
+                transcript['noncanonical_splicing'] = nc
 
     def add_direct_repeat_len(self, genome_fh, delta=15, max_mm=2, wobble=2):
         '''Computes direct repeat length.
@@ -201,8 +201,8 @@ class Gene(Interval):
         intron_seq = {}
         score = {}
 
-        for tr in self.transcripts:
-            for intron in ((tr['exons'][i][1], tr['exons'][i + 1][0]) for i in range(len(tr['exons']) - 1)):
+        for transcript in self.transcripts:
+            for intron in ((transcript['exons'][i][1], transcript['exons'][i + 1][0]) for i in range(len(transcript['exons']) - 1)):
                 for pos in intron:
                     try:
                         intron_seq.setdefault(pos, genome_fh.fetch(self.chrom, pos - delta, pos + delta))
@@ -217,8 +217,8 @@ class Gene(Interval):
                 if intron not in score:
                     score[intron] = repeat_len(intron_seq[intron[0]], intron_seq[intron[1]], wobble=wobble, max_mm=max_mm)
 
-        for tr in self.transcripts:
-            tr['direct_repeat_len'] = [min(score[(e1[1], e2[0])], delta) for e1, e2 in pairwise(tr['exons'])]
+        for transcript in self.transcripts:
+            transcript['direct_repeat_len'] = [min(score[(exon_1[1], exon_2[0])], delta) for exon_1, exon_2 in pairwise(transcript['exons'])]
 
     def add_threeprime_a_content(self, genome_fh, length=30):
         '''Adds the information of the genomic A content downstream the transcript.
@@ -230,18 +230,18 @@ class Gene(Interval):
         :param length: The length of the downstream region to be considered.
         '''
         a_content = {}
-        for tr in (t for tL in (self.transcripts, self.ref_transcripts) for t in tL):
+        for transcript in (t for tL in (self.transcripts, self.ref_transcripts) for t in tL):
             if self.strand == '+':
-                pos = tr['exons'][-1][1]
+                pos = transcript['exons'][-1][1]
             else:
-                pos = tr['exons'][0][0] - length
+                pos = transcript['exons'][0][0] - length
             if pos not in a_content:
                 seq = genome_fh.fetch(self.chrom, max(0, pos), pos + length)
                 if self.strand == '+':
                     a_content[pos] = seq.upper().count('A') / length
                 else:
                     a_content[pos] = seq.upper().count('T') / length
-            tr['downstream_A_content'] = a_content[pos]
+            transcript['downstream_A_content'] = a_content[pos]
 
     def get_sequence(self, genome_fh, transcript_ids=None, reference=False, protein=False):
         '''Returns the nucleotide sequence of the specified transcripts.
@@ -254,35 +254,35 @@ class Gene(Interval):
         :returns: A dictionary of transcript ids and their sequences.
         '''
 
-        trL = [(i, tr) for i, tr in enumerate(self.ref_transcripts if reference else self.transcripts) if transcript_ids is None or i in transcript_ids]
+        trL = [(i, transcript) for i, transcript in enumerate(self.ref_transcripts if reference else self.transcripts) if transcript_ids is None or i in transcript_ids]
         if not trL:
             return {}
-        pos = (min(tr['exons'][0][0] for _, tr in trL), max(tr['exons'][-1][1] for _, tr in trL))
+        pos = (min(transcript['exons'][0][0] for _, transcript in trL), max(transcript['exons'][-1][1] for _, transcript in trL))
         try:  # assume its a FastaFile file handle
             seq = genome_fh.fetch(self.chrom, *pos)
         except AttributeError:
             genome_fn = genome_fh
             with FastaFile(genome_fn) as genome_fh:
                 seq = genome_fh.fetch(self.chrom, *pos)
-        tr_seqs = {}
-        for i, tr in trL:
-            trseq = ''
-            for e in tr['exons']:
-                trseq += seq[e[0]-pos[0]:e[1]-pos[0]]
-            tr_seqs[i] = trseq
+        transcript_seqs = {}
+        for i, transcript in trL:
+            transcript_seq = ''
+            for exon in transcript['exons']:
+                transcript_seq += seq[exon[0]-pos[0]:exon[1]-pos[0]]
+            transcript_seqs[i] = transcript_seq
 
         if self.strand == '-':
-            tr_seqs = {i: reverse_complement(ts) for i, ts in tr_seqs.items()}
+            transcript_seqs = {i: reverse_complement(ts) for i, ts in transcript_seqs.items()}
         if not protein:
-            return tr_seqs
+            return transcript_seqs
         prot_seqs = {}
-        for i, tr in trL:
-            orf = tr.get("CDS", tr.get("ORF"))
+        for i, transcript in trL:
+            orf = transcript.get("CDS", transcript.get("ORF"))
             if not orf:
                 continue
             pos = sorted(self.find_transcript_positions(i, orf[:2], reference=reference))
             try:
-                prot_seqs[i] = translate(tr_seqs[i][pos[0]:pos[1]], cds=True)
+                prot_seqs[i] = translate(transcript_seqs[i][pos[0]:pos[1]], cds=True)
             except TranslationError:
                 logger.warning(f'CDS sequence of {self.id} {"reference" if reference else ""} transcript {i} cannot be translated.')
         return prot_seqs
@@ -294,24 +294,24 @@ class Gene(Interval):
         reverse_strand = self.strand == '-'
         utr, anno_cds = {}, {}
         match_cds = {}
-        for i, tr in enumerate(self.ref_transcripts):
-            if 'CDS' in tr:
-                anno_cds[i] = tr['CDS']
+        for i, transcript in enumerate(self.ref_transcripts):
+            if 'CDS' in transcript:
+                anno_cds[i] = transcript['CDS']
                 if not reverse_strand:
-                    utr[i] = [e for e in tr['exons'] if e[0] < tr['CDS'][0]]
+                    utr[i] = [exon for exon in transcript['exons'] if exon[0] < transcript['CDS'][0]]
                 else:
-                    utr[i] = [e for e in tr['exons'] if e[1] > tr['CDS'][1]]
+                    utr[i] = [exon for exon in transcript['exons'] if exon[1] > transcript['CDS'][1]]
 
         for transcript_id in transcript_ids:
-            tr = self.transcripts[transcript_id]
+            transcript = self.transcripts[transcript_id]
             match_cds[transcript_id] = {}
             for i, reg in utr.items():
-                if not any(s <= anno_cds[i][reverse_strand] <= e for s, e in tr['exons']):  # no overlap of CDS init with exons
+                if not any(start <= anno_cds[i][reverse_strand] <= end for start, end in transcript['exons']):  # no overlap of CDS init with exons
                     continue
                 if not reverse_strand:
-                    to_check = zip(pairwise(reg), pairwise(tr['exons']))
+                    to_check = zip(pairwise(reg), pairwise(transcript['exons']))
                 else:
-                    to_check = zip(pairwise((e, s) for s, e in reversed(reg)), pairwise((e, s) for s, e in reversed(tr['exons'])))
+                    to_check = zip(pairwise((end, start) for start, end in reversed(reg)), pairwise((e, s) for s, e in reversed(transcript['exons'])))
                 for ((e1reg, e2reg), (e1, e2)) in to_check:
                     if (e1reg[1] != e1[1] or e2reg[0] != e2[0]):
                         break
@@ -328,7 +328,7 @@ class Gene(Interval):
         (sequence starting with start_condon, and ending with in frame stop codon), or the longest ORF,
         starting with a codon that is annotated as CDS initiation site in a reference transcript.
         The genomic and transcript positions of these codons, and the length of the ORF, as well as  the number of upstream start codons
-        is added to the transcript properties tr["ORF"]. Additionally, the Fickett score, and the hexamer score are computed. For the
+        is added to the transcript properties transcript["ORF"]. Additionally, the Fickett score, and the hexamer score are computed. For the
         latter, hexamer frequencies in coding and noncoding transcripts are needed. See CPAT python module for prebuilt tables and
         instructions.
         :param tr_filter: dict with filtering parameters passed to iter_transcripts or iter_ref_transcripts
@@ -348,7 +348,7 @@ class Gene(Interval):
             else:
                 tr_dict = {i: self.transcripts[i] for i in self.filter_transcripts(**tr_filter)}
         else:
-            tr_dict = {i: tr for i, tr in enumerate(self.ref_transcripts if reference else self.transcripts)}
+            tr_dict = {i: transcript for i, transcript in enumerate(self.ref_transcripts if reference else self.transcripts)}
         assert min_kozak is None or kozak_matrix is not None, 'Kozak matrix missing for min_kozak'
         if not tr_dict:
             return
@@ -498,13 +498,13 @@ class Gene(Interval):
                     return
                 cov[:known.shape[0], :] = known
                 for i in range(known.shape[0], len(samples)):
-                    for j, tr in enumerate(self.transcripts):
-                        cov[i, j] = tr['coverage'].get(samples[i], 0)
+                    for j, transcript in enumerate(self.transcripts):
+                        cov[i, j] = transcript['coverage'].get(samples[i], 0)
                 self.data['coverage'] = cov
                 return
         for i, sa in enumerate(samples):
-            for j, tr in enumerate(self.transcripts):
-                cov[i, j] = tr['coverage'].get(sa, 0)
+            for j, transcript in enumerate(self.transcripts):
+                cov[i, j] = transcript['coverage'].get(sa, 0)
         self.data['coverage'] = cov
         self.data['segment_graph'] = None
 
@@ -640,7 +640,7 @@ class Gene(Interval):
 
         assert self.is_annotated, "reference segment graph requested on novel gene"
         if 'segment_graph' not in self.data['reference'] or self.data['reference']['segment_graph'] is None:
-            transcript_exons = [tr['exons'] for tr in self.ref_transcripts]
+            transcript_exons = [transcript['exons'] for transcript in self.ref_transcripts]
             self.data['reference']['segment_graph'] = SegmentGraph(transcript_exons, self.strand)
         return self.data['reference']['segment_graph']
 
@@ -714,17 +714,17 @@ class Gene(Interval):
         :type exons: list
         :return: boolean array indicating whether the splice site is contained or not'''
 
-        intron_iter = [pairwise(tr['exons']) for tr in transcripts]
-        current = [next(tr) for tr in intron_iter]
+        intron_iter = [pairwise(transcript['exons']) for transcript in transcripts]
+        current = [next(transcript) for transcript in intron_iter]
         contained = np.zeros(len(exons)-1)
-        for j, (e1, e2) in enumerate(pairwise(exons)):
-            for i, tr in enumerate(intron_iter):
-                while current[i][0][1] < e1[1]:
+        for j, (exon1, exon2) in enumerate(pairwise(exons)):
+            for i, transcript in enumerate(intron_iter):
+                while current[i][0][1] < exon1[1]:
                     try:
-                        current[i] = next(tr)
+                        current[i] = next(transcript)
                     except StopIteration:
                         continue
-                if e1[1] == current[i][0][1] and e2[0] == current[i][1][0]:
+                if exon1[1] == current[i][0][1] and exon2[0] == current[i][1][0]:
                     contained[j] = True
         return current
 

@@ -285,14 +285,14 @@ def sashimi_plot(self, samples=None, title='Long read sashimi plot', ax=None, ju
     arcs = []
     for i, (_, ee, _, suc) in enumerate(sg):
         weights = {}
-        for tr, next_i in suc.items():
+        for transcript, next_i in suc.items():
             if sg[next_i][0] == ee or not has_overlap(x_range, (ee, sg[next_i][0])):
                 continue
-            if select_transcripts is not None and tr not in select_transcripts:
+            if select_transcripts is not None and transcript not in select_transcripts:
                 continue
-            tr_j_cov = self.coverage[np.ix_(sidx, [tr])].sum()
-            if tr_j_cov:
-                weights[next_i] = weights.get(next_i, 0)+tr_j_cov
+            transcript_junction_coverage = self.coverage[np.ix_(sidx, [transcript])].sum()
+            if transcript_junction_coverage:
+                weights[next_i] = weights.get(next_i, 0)+transcript_junction_coverage
         arcs_new = [(ee, boxes[i][2], sg[next_i][0], boxes[next_i][2], w) for next_i, w in weights.items()]
         if arcs_new:
             arcs.extend(arcs_new)
@@ -436,22 +436,21 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
         ol_genes = {self}
 
     transcript_list = []
-    for g in ol_genes:
-        select_tr = g.filter_ref_transcripts(query) if reference else g.filter_transcripts(query, min_coverage, max_coverage)
-        if select_transcripts.get(g.name):
-            select_tr = [transcript_id for transcript_id in select_tr if transcript_id in select_transcripts.get(g.name)]
+    for gene in ol_genes:
+        select_tr = gene.filter_ref_transcripts(query) if reference else gene.filter_transcripts(query, min_coverage, max_coverage)
+        if select_transcripts.get(gene.name):
+            select_tr = [transcript_id for transcript_id in select_tr if transcript_id in select_transcripts.get(gene.name)]
         if reference:  # select transcripts and sort by start
-            transcript_list.extend([(g, transcript_nr, transcript) for transcript_nr, transcript in enumerate(g.ref_transcripts) if transcript_nr in select_tr])
+            transcript_list.extend([(gene, transcript_nr, transcript) for transcript_nr, transcript in enumerate(gene.ref_transcripts) if transcript_nr in select_tr])
         else:
-            transcript_list.extend([(g, tr_nr, tr) for tr_nr, tr in enumerate(g.transcripts) if tr_nr in select_tr])
+            transcript_list.extend([(gene, transcript_number, transcript) for transcript_number, transcript in enumerate(gene.transcripts) if transcript_number in select_tr])
     transcript_list.sort(key=lambda x: x[2]['exons'][0][0])  # sort by start position
-
-    for g, tr_nr, transcript in transcript_list:
+    for gene, tr_nr, transcript in transcript_list:
         tr_start, tr_end = transcript['exons'][0][0], transcript['exons'][-1][1]
         if (tr_end < x_range[0] or tr_start > x_range[1]):  # transcript does not overlap x_range
             continue
-        transcript_id = '> ' if g.strand == '+' else '< '  # indicate the strand like in ensembl browser
-        transcript_id += transcript['transcript_name'] if 'transcript_name' in transcript else f'{g.name}_{tr_nr}'
+        transcript_id = '> ' if gene.strand == '+' else '< '  # indicate the strand like in ensembl browser
+        transcript_id += transcript['transcript_name'] if 'transcript_name' in transcript else f'{gene.name}_{tr_nr}'
 
         # find next line that is not blocked
         try:
@@ -464,7 +463,7 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
 
         # use SQANTI color palette if colorbySqanti is True
         if colorbySqanti:
-            color = sqanti_palette[tr['annotation'][0]]['color']
+            color = sqanti_palette[transcript['annotation'][0]]['color']
 
         # line from TSS to PAS at 0.25
         ax.plot((tr_start, tr_end), [i + .25] * 2, color=color)
@@ -490,7 +489,7 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
                 rect = patches.Rectangle((st, i + .125), (end - st), .25, linewidth=1, edgecolor=color, facecolor=color)
                 ax.add_patch(rect)
             if label_exon_numbers and (end > x_range[0] and st < x_range[1]):
-                enr = j + 1 if g.strand == '+' else len(transcript['exons']) - j
+                enr = j + 1 if gene.strand == '+' else len(transcript['exons']) - j
                 pos = (max(st, x_range[0]) + min(end, x_range[1])) / 2
                 ax.text(pos, i + .25, enr, ha='center', va='center', color=contrast, fontsize=label_fontsize,
                         clip_on=True)  # bbox=dict(boxstyle='round', facecolor='wheat',edgecolor=None,  alpha=0.5)
@@ -591,14 +590,14 @@ def find_segments(transcripts, orf_only=True, separate_exons=False):
             exon_list.append([])
             if cds_pos is None:
                 continue
-            for e in transcript['exons']:
-                if e[1] < cds_pos[0]:
+            for exon in transcript['exons']:
+                if exon[1] < cds_pos[0]:
                     continue
-                if e[0] > cds_pos[1]:
+                if exon[0] > cds_pos[1]:
                     break
-                exon_list[-1].append([max(e[0], cds_pos[0]), min(e[1], cds_pos[1])])
+                exon_list[-1].append([max(exon[0], cds_pos[0]), min(exon[1], cds_pos[1])])
     else:
-        exon_list = [tr['exons'] for tr in transcripts]
+        exon_list = [transcript['exons'] for transcript in transcripts]
 
     junctions = sorted([(pos, bool(j), i) for i, cds in enumerate(exon_list) for e in cds for j, pos in enumerate(e)])
     open_c = 0
@@ -705,7 +704,7 @@ def plot_domains(self, source, categories=None, transcript_ids=True, ref_transcr
     if ax is None:
         _, ax = plt.subplots(1)
     skipped = 0
-    segments, genome_map = find_segments([tr for _, tr in transcripts], orf_only=not include_utr, separate_exons=separate_exons)
+    segments, genome_map = find_segments([transcript for _, transcript in transcripts], orf_only=not include_utr, separate_exons=separate_exons)
     max_len = max(seg[-1][1] for seg in segments)
     assert max_len == sum(seg[1]-seg[0] for seg in genome_map)
     if self.strand == "-":

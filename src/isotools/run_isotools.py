@@ -220,13 +220,13 @@ def altsplice_plots(isoseq, groups, filename, progress_bar):
 
 def altsplice_examples(isoseq, n, query='not FSM'):  # return the top n covered genes for each category
     examples = {}
-    for g, transcript_ids, transcripts in isoseq.iter_transcripts(query=query, genewise=True):
-        total_cov = g.coverage.sum()
+    for gene, transcript_ids, transcripts in isoseq.iter_transcripts(query=query, genewise=True):
+        total_cov = gene.coverage.sum()
         for transcript_id, transcript in zip(transcript_ids, transcripts):
-            cov = g.coverage[:, transcript_id].sum()
+            cov = gene.coverage[:, transcript_id].sum()
             score = cov*cov/total_cov
             for cat in transcript['annotation'][1]:
-                examples.setdefault(cat, []).append((score, g.name, g.id, transcript_id, cov, total_cov))
+                examples.setdefault(cat, []).append((score, gene.name, gene.id, transcript_id, cov, total_cov))
 
     examples = {k: sorted(v, key=lambda x: -x[0]) for k, v in examples.items()}
     return {k: v[:n] for k, v in examples.items()}
@@ -246,9 +246,9 @@ def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, 
     for cat, best_list in examples.items():
         logger.debug(cat + str(best_list))
         for i, (score, gene_name, gene_id, transcript_id,  cov, total_cov) in enumerate(best_list):
-            g = isoseq[gene_id]
+            gene = isoseq[gene_id]
             try:
-                info = g.transcripts[transcript_id]["annotation"][1][cat]
+                info = gene.transcripts[transcript_id]["annotation"][1][cat]
             except TypeError:
                 info = list()
             logger.info(f'{i + 1}. best example for {cat}: {gene_name} {transcript_id} {info}, {cov} {total_cov} ({cov/total_cov:%})')
@@ -257,16 +257,16 @@ def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, 
             if info:
                 junctions = []
                 if cat == 'exon skipping':
-                    exons = g.transcripts[transcript_id]['exons']
+                    exons = gene.transcripts[transcript_id]['exons']
                     for pos in info:
                         idx = next(i for i, e in enumerate(exons) if e[0] > pos[0])
                         junctions.append((exons[idx - 1][1], exons[idx][0]))
                     info = junctions
                 elif cat == 'novel exon':
-                    exons = g.transcripts[transcript_id]['exons']
-                    for i, e in enumerate(exons[1:-1]):
-                        if e in info:
-                            junctions.extend([(exons[i][1], e[0]), (e[1], exons[i+2][0])])
+                    exons = gene.transcripts[transcript_id]['exons']
+                    for i, exon in enumerate(exons[1:-1]):
+                        if exon in info:
+                            junctions.extend([(exons[i][1], exon[0]), (exon[1], exons[i+2][0])])
                 elif cat == 'novel junction':
                     junctions = info
                 for pos in junctions:
@@ -276,10 +276,10 @@ def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, 
                     except TypeError:
                         pass
             print(f'junctions of interest: {joi}')
-            fig, axs = g.sashimi_figure(samples=groups, junctions_of_interest=joi)
+            fig, axs = gene.sashimi_figure(samples=groups, junctions_of_interest=joi)
 
             fig.tight_layout()
-            stem = f'{file_prefix}_altsplice{file_suffix}_{cat.replace(" ","_").replace("/","_")}_{g.name}'
+            stem = f'{file_prefix}_altsplice{file_suffix}_{cat.replace(" ","_").replace("/","_")}_{gene.name}'
             fig.savefig(f'{stem}_sashimi.{plot_type}')
             # zoom
             if info:
@@ -295,7 +295,7 @@ def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, 
                         continue
                     for a in axs:
                         a.set_xlim((start - 100, end + 100))
-                    axs[0].set_title(f'{g.name} {g.chrom}:{start}-{end} {cat} (cov={cov})')
+                    axs[0].set_title(f'{gene.name} {gene.chrom}:{start}-{end} {cat} (cov={cov})')
 
                     plt.savefig(f'{stem}_zoom_{start}_{end}_sashimi.{plot_type}')
             plt.close()
@@ -311,27 +311,27 @@ def plot_diffsplice(isoseq, de_tab, groups, illu_gr, file_prefix, plot_type):
 
     plt.rcParams["figure.figsize"] = (7, 2*nplots)
     for gene_id in de_tab['gene_id'].unique():
-        g = isoseq[gene_id]
-        logger.info(f'sashimi plot for differentially spliced gene {g.name}')
+        gene = isoseq[gene_id]
+        logger.info(f'sashimi plot for differentially spliced gene {gene.name}')
         joi = []
         for _, regOI in de_tab.loc[de_tab['gene_id'] == gene_id].iterrows():
             # trA, trB = (list(map(int, regOI[i][1:-1].split(', '))) for i in ('trA', 'trB'))
-            trA, trB = list(regOI['trA']), list(regOI['trB'])
-            trA.sort(key=lambda x: -g.coverage[:, x].sum())
-            trB.sort(key=lambda x: -g.coverage[:, x].sum())
-            joi.extend([(e1[1], e2[0]) for e1, e2 in pairwise(g.transcripts[trA[0]]['exons']) if e1[1] >= regOI.start and e2[0] <= regOI.end])
-            joi.extend([(e1[1], e2[0]) for e1, e2 in pairwise(g.transcripts[trB[0]]['exons']) if e1[1] >= regOI.start and e2[0] <= regOI.end])
+            transcriptA, transcriptB = list(regOI['trA']), list(regOI['trB'])
+            transcriptA.sort(key=lambda x: -gene.coverage[:, x].sum())
+            transcriptB.sort(key=lambda x: -gene.coverage[:, x].sum())
+            joi.extend([(exon1[1], exon2[0]) for exon1, exon2 in pairwise(gene.transcripts[transcriptA[0]]['exons']) if exon1[1] >= regOI.start and exon2[0] <= regOI.end])
+            joi.extend([(exon1[1], exon2[0]) for exon1, exon2 in pairwise(gene.transcripts[transcriptB[0]]['exons']) if exon1[1] >= regOI.start and exon2[0] <= regOI.end])
 
-        fig, axs = g.sashimi_figure(samples=groups, junctions_of_interest=joi)
+        fig, axs = gene.sashimi_figure(samples=groups, junctions_of_interest=joi)
         fig.tight_layout()
-        fig.savefig(f'{file_prefix}_{"_".join(groups)}_{g.name}_sashimi.{plot_type}')
+        fig.savefig(f'{file_prefix}_{"_".join(groups)}_{gene.name}_sashimi.{plot_type}')
         # zoom
-        for i, row in de_tab.loc[de_tab.gene == g.name].iterrows():
-            if row.start > g.start and row.end < g.end:
+        for i, row in de_tab.loc[de_tab.gene == gene.name].iterrows():
+            if row.start > gene.start and row.end < gene.end:
                 for a in axs:
                     a.set_xlim((row.start - 1000, row.end + 1000))
-                axs[0].set_title(f'{g.name} {g.chrom}:{row.start}-{row.end}')
-                fig.savefig(f'{file_prefix}_{"_".join(groups)}_{g.name}_zoom_{row.start}_{row.end}_sashimi.{plot_type}')
+                axs[0].set_title(f'{gene.name} {gene.chrom}:{row.start}-{row.end}')
+                fig.savefig(f'{file_prefix}_{"_".join(groups)}_{gene.name}_zoom_{row.start}_{row.end}_sashimi.{plot_type}')
         plt.close(fig)
 
 

@@ -17,27 +17,27 @@ class Coverage:
         self.bam_fn = None
 
     @classmethod
-    def from_bam(cls, bam_fn, g, load=False):
+    def from_bam(cls, bam_fn, gene, load=False):
         'assign the bam file'
         if load:
             with AlignmentFile(bam_fn, 'rb') as align:
-                return cls.from_alignment(g, align)
+                return cls.from_alignment(gene, align)
         else:  # load on demand
             obj = cls.__new__(cls)
             obj._cov = None
             obj._junctions = None
             obj.bam_fn = bam_fn
-            start = min(g.start, *[tr['exons'][0][0] for tr in g.transcripts])
-            end = max(g.end, *[tr['exons'][-1][1] for tr in g.transcripts])
-            obj.reg = (g.chrom, start, end)
+            start = min(gene.start, *[transcript['exons'][0][0] for transcript in gene.transcripts])
+            end = max(gene.end, *[transcript['exons'][-1][1] for transcript in gene.transcripts])
+            obj.reg = (gene.chrom, start, end)
             return obj
 
     @classmethod
-    def from_alignment(cls, align_fh, g):
+    def from_alignment(cls, align_fh, gene):
         'load the coverage from bam file'
-        start = min(g.start, *[tr['exons'][0][0] for tr in g.transcripts])
-        end = max(g.end, *[tr['exons'][-1][1] for tr in g.transcripts])
-        cov, junctions = cls._import_coverage(align_fh, (g.chrom, start, end))
+        start = min(gene.start, *[transcript['exons'][0][0] for transcript in gene.transcripts])
+        end = max(gene.end, *[transcript['exons'][-1][1] for transcript in gene.transcripts])
+        cov, junctions = cls._import_coverage(align_fh, (gene.chrom, start, end))
         obj = cls.__new__(cls)
         obj.__init__(cov, junctions, start)
         return obj

@@ -423,23 +423,23 @@ def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_cove
     assert all(t in self.filter['transcript'] for t in tags), '"Tags" contains invalid tags'
     filterfun = {tag: _filter_function(tag, self.filter['transcript'])[0] for tag in tags}
     if groups is not None:
-        sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
-        groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}
+        sample_indices = {sample: i for i, sample in enumerate(self.samples)}  # idx
+        groups = {group_name: [sample_indices[sample] for sample in sample_group] for group_name, sample_group in groups.items()}
     current = None
-    for g, transcript_id, transcript in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            w = g.coverage.copy() if groups is None else np.array([g.coverage[grp, :].sum(0) for grp in groups.values()])
-            w[w < min_coverage] = 0
+    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            weight = gene.coverage.copy() if groups is None else np.array([gene.coverage[group, :].sum(0) for group in groups.values()])
+            weight[weight < min_coverage] = 0
             if not weight_by_coverage:
-                w[w > 0] = 1
-        # relevant_filter=[f for f in tr['filter'] if  consider is None or f in consider]
-        relevant_filter = [tag for tag in tags if filterfun[tag](g=g, transcript_id=transcript_id, **transcript)]
-        for f in relevant_filter:
-            weights[f] = weights.get(f, np.zeros(w.shape[0])) + w[:, transcript_id]
+                weight[weight > 0] = 1
+        # relevant_filter=[filter for filter in transcript['filter'] if  consider is None or filter in consider]
+        relevant_filter = [tag for tag in tags if filterfun[tag](gene=gene, transcript_id=transcript_id, **transcript)]
+        for filter in relevant_filter:
+            weights[filter] = weights.get(filter, np.zeros(weight.shape[0])) + weight[:, transcript_id]
         if not relevant_filter:
-            weights['PASS'] = weights.get('PASS', np.zeros(w.shape[0])) + w[:, transcript_id]
-        weights['total'] = weights.get('total', np.zeros(w.shape[0])) + w[:, transcript_id]
+            weights['PASS'] = weights.get('PASS', np.zeros(weight.shape[0])) + weight[:, transcript_id]
+        weights['total'] = weights.get('total', np.zeros(weight.shape[0])) + weight[:, transcript_id]
 
     df = pd.DataFrame(weights, index=self.samples if groups is None else groups.keys()).T
 
@@ -483,7 +483,7 @@ def transcript_length_hist(self=None, groups=None, add_reference=False, bins=50,
         trlen.append(sum(e[1] - e[0] for e in transcript['exons']) if use_alignment else transcript['source_len'])  # source_len is not set in the current version
     cov = pd.DataFrame(cov, columns=self.samples)
     if groups is not None:
-        cov = pd.DataFrame({grn: cov[grp].sum(1) for grn, grp in groups.items()})
+        cov = pd.DataFrame({grn: cov[group].sum(1) for grn, group in groups.items()})
     if isinstance(bins, int):
         bins = np.linspace(x_range[0] - .5, x_range[1] - .5, bins + 1)
     cov[cov < min_coverage] = 0
@@ -491,7 +491,7 @@ def transcript_length_hist(self=None, groups=None, add_reference=False, bins=50,
         cov[cov > 0] = 1
     counts = pd.DataFrame({gn: np.histogram(trlen, weights=g_cov, bins=bins)[0] for gn, g_cov in cov.items()})
     if add_reference:
-        ref_len = [sum(e[1] - e[0] for e in tr['exons']) for _, _, tr in self.iter_ref_transcripts(**ref_filter)]
+        ref_len = [sum(exon[1] - exon[0] for exon in transcript['exons']) for _, _, transcript in self.iter_ref_transcripts(**ref_filter)]
         counts['reference'] = np.histogram(ref_len, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     params = dict(yscale='linear', title='transcript length', xlabel='transcript length [bp]', density=True)
@@ -617,7 +617,7 @@ def exons_per_transcript_hist(self, groups=None, add_reference=False, bins=34, x
         cov[cov > 0] = 1
     counts = pd.DataFrame({gn: np.histogram(n_exons, weights=g_cov, bins=bins)[0] for gn, g_cov in cov.items()})
     if add_reference:
-        ref_n_exons = [len(tr['exons']) for _, _, tr in self.iter_ref_transcripts(**ref_filter)]
+        ref_n_exons = [len(transcript['exons']) for _, _, transcript in self.iter_ref_transcripts(**ref_filter)]
         counts['reference'] = np.histogram(ref_n_exons, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     sub = f'counting transcripts covered by >= {min_coverage} reads'
@@ -627,7 +627,7 @@ def exons_per_transcript_hist(self, groups=None, add_reference=False, bins=34, x
     return pd.concat([bin_df, counts], axis=1).set_index(['from', 'to']), params
 
 
-def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(0, 1), weight_by_coverage=True, min_coverage=2, tr_filter={}, ref_filter={}):
+def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(0, 1), weight_by_coverage=True, min_coverage=2, transcript_filter={}, ref_filter={}):
     '''Retrieves the distribution of downstream adenosine content.
 
     High downstream adenosine content is indicative for internal priming.
@@ -644,10 +644,10 @@ def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(
     acontent = []
     cov = []
     current = None
-    for g, transcript_id, transcript in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage
+    for gene, transcript_id, transcript in self.iter_transcripts(**transcript_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage
         cov.append(current_cov[:, transcript_id])
         try:
             acontent.append(transcript['downstream_A_content'])
@@ -661,9 +661,9 @@ def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(
     cov[cov < min_coverage] = 0
     if not weight_by_coverage:
         cov[cov > 0] = 1
-    counts = pd.DataFrame({gn: np.histogram(acontent, weights=g_cov, bins=bins)[0] for gn, g_cov in cov.items()})
+    counts = pd.DataFrame({group_name: np.histogram(acontent, weights=group_cov, bins=bins)[0] for group_name, group_cov in cov.items()})
     if add_reference:
-        ref_acontent = [tr['downstream_A_content'] for _, _, tr in self.iter_ref_transcripts(**ref_filter) if 'downstream_A_content' in tr]
+        ref_acontent = [transcript['downstream_A_content'] for _, _, transcript in self.iter_ref_transcripts(**ref_filter) if 'downstream_A_content' in transcript]
         counts['reference'] = np.histogram(ref_acontent, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     params = dict(title='downstream genomic A content', xlabel='fraction of A downstream the transcript')
