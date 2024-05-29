@@ -3,9 +3,9 @@
 [![PyPI](https://img.shields.io/pypi/v/isotools.svg)](https://pypi.org/project/isotools)
 [![PyPIDownloadsTotal](https://pepy.tech/badge/isotools)](https://pepy.tech/project/isotools)
 [![Licence: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/MatthiasLienhard/isotools/blob/master/LICENSE.txt)
-<img align="right" src="IsoToolsLogo.png" width="300"  />
+<img align="right" src="IsoToolsLogo.png" alt="IsoTools Logo" width="300"  />
 
-# IsoTools 
+# IsoTools
 IsoTools is a python module for Long Read Transcriptome Sequencing (LRTS) analysis.
 
 Key features:
@@ -35,11 +35,11 @@ python3 -m pip install .
 ```
 
 ## usage:
-This code block demonstrates the basic file import with IsoTools. 
+This code block demonstrates the basic file import with IsoTools.
 It uses a small test data set contained in this repository, and should run within seconds. The paths are relative to the root of the repository.
 For more comprehensive real world examples see the [tutorials](https://isotools.readthedocs.io/en/latest/tutorials.html "readthedocs").
 ```python
-from  isotools import Transcriptome
+from isotools import Transcriptome
 import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 # import the reference annotation
