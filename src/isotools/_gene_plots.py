@@ -411,6 +411,10 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
     
     contrast = 'white' if np.mean(plt_col.to_rgb(color)) < .5 else 'black'
     
+    # there is no Sqanti classification for reference transcripts
+    if reference:
+        colorbySqanti = False
+    
     if colorbySqanti:
         sqanti_palette = {0:{'tag':'FSM', 'color':'#6BAED6'}, 1:{'tag':'ISM', 'color':'#FC8D59'},
                           2:{'tag':'NIC', 'color':'#78C679'}, 3:{'tag':'NNC', 'color':'#EE6A50'},
