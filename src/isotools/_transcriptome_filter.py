@@ -145,14 +145,15 @@ def add_filter(self, tag, expression, context='transcript', update=False):
     isotools.DEFAULT_TRANSCRIPT_FILTER and isotools.DEFAULT_REF_TRANSCRIPT_FILTER.
 
     :param tag: Unique tag identifer for this filter. Must be a single word.
-    :param expression: Expression to be evaluated on gene, transcript, or reference transcript.
+    :param expression: Expression to be evaluated on gene, transcript, or reference transcript. Can use existing filters
+        from the same context. Note that updates to used filters afterwards will not automatically update this filter.
     :param context: The context for the filter expression, either "gene", "transcript" or "reference".
     :param update: If set, the already present definition of the provided tag gets overwritten.'''
 
     assert context in ['gene', 'transcript', 'reference'], "filter context must be 'gene', 'transcript' or 'reference'"
     assert tag == re.findall(r'\b\w+\b', tag)[0], '"tag" must be a single word'
     if not update:
-        assert tag not in [f for f in self.filter.values()], "Filter tag is already present. Set update=True to re-define."
+        assert tag not in self.filter[context], f"Filter {tag} is already present: `{self.filter[context][tag]}`. Set update=True to re-define."
     if context == 'gene':
         attributes = {k for g in self for k in g.data.keys() if k.isidentifier()}
     else:
@@ -161,9 +162,16 @@ def add_filter(self, tag, expression, context='transcript', update=False):
             attributes.update({k for g in self for tr in g.transcripts for k in tr.keys() if k.isidentifier()})
         elif context == 'reference':
             attributes.update({k for g in self if g.is_annotated for tr in g.ref_transcripts for k in tr.keys() if k.isidentifier()})
-    # used=re.findall(r'\b\w+\b', expression)
 
-    try:  # test whether the expression can be evaluated
+    # Filters can re-use other filters
+    words = re.findall(r'\b\w+\b', expression)
+    for word in words:
+        if word in self.filter[context]:
+            # brackets around expression prevent unintended "mixing" of neighboring filters
+            expression = expression.replace(word, f"({self.filter[context][word]})")
+
+    # test whether the expression can be evaluated
+    try:
         _, f_args = _filter_function(expression)
         # _=f() # this would fail for many default expressions - can be avoided by checking if used attributes are None - but not ideal
         # Could be extended by dummy gene/transcript argument
