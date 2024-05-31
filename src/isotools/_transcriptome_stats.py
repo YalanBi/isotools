@@ -420,7 +420,7 @@ def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_cove
     if tags is None:
         tags = list(self.filter['transcript'])
     assert all(t in self.filter['transcript'] for t in tags), '"Tags" contains invalid tags'
-    filterfun = {t: _filter_function(self.filter['transcript'][t])[0] for t in tags}
+    filterfun = {t: _filter_function(self.filter['transcript'][t], self.filter['transcript'])[0] for t in tags}
     if groups is not None:
         sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
         groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}

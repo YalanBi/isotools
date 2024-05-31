@@ -163,16 +163,9 @@ def add_filter(self, tag, expression, context='transcript', update=False):
         elif context == 'reference':
             attributes.update({k for g in self if g.is_annotated for tr in g.ref_transcripts for k in tr.keys() if k.isidentifier()})
 
-    # Filters can re-use other filters
-    words = re.findall(r'\b\w+\b', expression)
-    for word in words:
-        if word in self.filter[context]:
-            # brackets around expression prevent unintended "mixing" of neighboring filters
-            expression = expression.replace(word, f"({self.filter[context][word]})")
-
     # test whether the expression can be evaluated
     try:
-        _, f_args = _filter_function(expression)
+        _, f_args = _filter_function(expression, self.filter[context])
         # _=f() # this would fail for many default expressions - can be avoided by checking if used attributes are None - but not ideal
         # Could be extended by dummy gene/transcript argument
     except BaseException:
@@ -180,7 +173,8 @@ def add_filter(self, tag, expression, context='transcript', update=False):
         raise
     unknown_attr = [attr for attr in f_args if attr not in attributes]
     if unknown_attr:
-        logger.warning("Some attributes not present in %s context, please make sure there is no typo: %s", context, ','.join(unknown_attr))
+        logger.warning(f"Some attributes not present in {context} context, please make sure there is no typo: {','.join(unknown_attr)}\n\
+                         \rThis can happen for correct filters when there are no or only a few transcripts loaded into the model.")
     if update:  # avoid the same tag in different context
         for old_context, filter_dict in self.filter.items():
             if filter_dict.pop(tag, None) is not None:
@@ -201,7 +195,7 @@ def iter_genes(self, region=None, query=None, min_coverage=None, max_coverage=No
         msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
         assert all(f in all_filter for f in used_tags), msg.format(
             ', '.join(f for f in used_tags if f not in all_filter), ', '.join(all_filter))
-        filter_fun = {tag: _filter_function(self.filter['gene'][tag])[0] for tag in used_tags}
+        filter_fun = {tag: _filter_function(self.filter['gene'][tag], self.filter['gene'])[0] for tag in used_tags}
 
         try:  # test the filter expression with dummy tags
             query_fun(**{tag: True for tag in used_tags})
@@ -264,10 +258,11 @@ def iter_transcripts(self, region=None, query=None, min_coverage=None, max_cover
         msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
         assert all(f in all_filter for f in used_tags), msg.format(
             ', '.join(f for f in used_tags if f not in all_filter), ', '.join(all_filter))
-        tr_filter_fun = {tag: _filter_function(self.filter['transcript'][tag])[0] for tag in used_tags if tag in self.filter['transcript']}
-        g_filter_fun = {tag: _filter_function(self.filter['gene'][tag])[0] for tag in used_tags if tag in self.filter['gene']}
+        tr_filter_fun = {tag: _filter_function(self.filter['transcript'][tag], self.filter['transcript'])[0] for tag in used_tags if tag in self.filter['transcript']}
+        g_filter_fun = {tag: _filter_function(self.filter['gene'][tag], self.filter['gene'])[0] for tag in used_tags if tag in self.filter['gene']}
 
-        try:  # test the filter expression with dummy tags
+        # test the filter expression with dummy tags
+        try:
             _ = query_fun(**{tag: True for tag in used_tags})
         except BaseException:
             logger.error("Error in query string: \n%s", query)
@@ -305,8 +300,8 @@ def iter_ref_transcripts(self, region=None, query=None, genewise=False, gois=Non
         all_filter = list(self.filter['reference']) + list(self.filter['gene'])
         query_fun, used_tags = _filter_function(query)
         msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
-        ref_filter_fun = {tag: _filter_function(self.filter['reference'][tag])[0] for tag in used_tags if tag in self.filter['reference']}
-        g_filter_fun = {tag: _filter_function(self.filter['gene'][tag])[0] for tag in used_tags if tag in self.filter['gene']}
+        ref_filter_fun = {tag: _filter_function(self.filter['reference'][tag], self.filter['reference'])[0] for tag in used_tags if tag in self.filter['reference']}
+        g_filter_fun = {tag: _filter_function(self.filter['gene'][tag], self.filter['gene'])[0] for tag in used_tags if tag in self.filter['gene']}
         assert all(f in all_filter for f in used_tags), msg.format(
             ', '.join(f for f in used_tags if f not in all_filter), ', '.join(all_filter))
         try:  # test the filter expression with dummy tags

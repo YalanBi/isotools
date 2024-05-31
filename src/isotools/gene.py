@@ -676,7 +676,7 @@ class Gene(Interval):
             msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
             assert all(f in tr_filter for f in used_tags), msg.format(
                 ', '.join(f for f in used_tags if f not in tr_filter), ', '.join(tr_filter))
-            tr_filter_fun = {tag: _filter_function(tr_filter[tag])[0] for tag in used_tags if tag in tr_filter}
+            tr_filter_fun = {tag: _filter_function(tr_filter[tag], tr_filter)[0] for tag in used_tags if tag in tr_filter}
         trids = []
         for i, tr in enumerate(self.transcripts):
             if min_coverage and self.coverage[:, i].sum() < min_coverage:
@@ -696,7 +696,7 @@ class Gene(Interval):
             msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
             assert all(f in tr_filter for f in used_tags), msg.format(
                 ', '.join(f for f in used_tags if f not in tr_filter), ', '.join(tr_filter))
-            tr_filter_fun = {tag: _filter_function(tr_filter[tag])[0] for tag in used_tags if tag in tr_filter}
+            tr_filter_fun = {tag: _filter_function(tr_filter[tag], tr_filter)[0] for tag in used_tags if tag in tr_filter}
         else:
             return list(range(len(self.ref_transcripts)))
         trids = []
