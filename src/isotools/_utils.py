@@ -236,8 +236,8 @@ def get_intersects(tr1, tr2):
 
 def _filter_function(expression, context_filters = {}):
     '''
-    converts a string e.g. "all(x[0]/x[1]>3) " into a function
-    if context_filters is provided, filters tags will be recursively replaced with their expression
+    converts a string e.g. "all(x[0]/x[1]>3)" into a function
+    if context_filters is provided, filter tags will be recursively replaced with their expression
     '''
     # extract argument names
     used_filters = []
@@ -255,7 +255,7 @@ def _filter_function(expression, context_filters = {}):
         if len(used_filters) == 0:
             break
         if depth > 10:
-            raise ValueError(f'Filter expression evaluation max depth reached. Expression: {original_expression}')
+            raise ValueError(f'Filter expression evaluation max depth reached. Expression `{original_expression}` was evaluated to `{expression}`')
 
     # potential issue: g.coverage gets detected as ["g", "coverage"], e.g. coverage is added. Probably not causing trubble
     return eval(f'lambda {",".join([arg+"=None" for arg in args]+["**kwargs"])}: bool({expression})\n', {}, {}), args

@@ -146,14 +146,14 @@ def add_filter(self, tag, expression, context='transcript', update=False):
 
     :param tag: Unique tag identifer for this filter. Must be a single word.
     :param expression: Expression to be evaluated on gene, transcript, or reference transcript. Can use existing filters
-        from the same context. Note that updates to used filters afterwards will not automatically update this filter.
+        from the same context.
     :param context: The context for the filter expression, either "gene", "transcript" or "reference".
     :param update: If set, the already present definition of the provided tag gets overwritten.'''
 
     assert context in ['gene', 'transcript', 'reference'], "filter context must be 'gene', 'transcript' or 'reference'"
     assert tag == re.findall(r'\b\w+\b', tag)[0], '"tag" must be a single word'
     if not update:
-        assert tag not in self.filter[context], f"Filter {tag} is already present: `{self.filter[context][tag]}`. Set update=True to re-define."
+        assert tag not in self.filter[context], f"Filter tag {tag} is already present: `{self.filter[context][tag]}`. Set update=True to re-define."
     if context == 'gene':
         attributes = {k for g in self for k in g.data.keys() if k.isidentifier()}
     else:
