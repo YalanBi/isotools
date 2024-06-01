@@ -252,7 +252,7 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
     for sa in samples:
         sample_properties[sa].update({'name': sa, 'file': coverage_csv_file, 'nonchimeric_reads': cov_tab[sample_cov_cols[sa]].sum(), 'chimeric_reads': 0})
         # self.infos['sample_table'] = self.sample_table.append(sample_properties[sa], ignore_index=True)
-        self.infos['sample_table'] = pd.concat([self.sample_table, pd.DataFrame([sample_properties[sa]])])
+        self.infos['sample_table'] = pd.concat([self.sample_table, pd.DataFrame([sample_properties[sa]])], ignore_index=True)
 
     self.make_index()
     return id_map
@@ -311,6 +311,8 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
             chromosomes = align.references
         else:
             chromosomes = self.chromosomes
+        
+        # a sum of reads mapped/unmapped for each chromosome
         stats = align.get_index_statistics()
         # try catch if sam/ no index /not pacbio?
         total_alignments = sum([s.mapped for s in stats if s.contig in chromosomes])
@@ -333,6 +335,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                 for read in align.fetch(chrom):
                     n_reads += 1
                     pbar.update(.5)
+
                     if read.flag & 0x4:  # unmapped
                         unmapped += 1
                         continue
@@ -343,10 +346,12 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                         n_lowqual += 1
                         continue
                     tags = dict(read.tags)
+                    
                     if barcodes:
                         if 'XC' not in tags or tags['XC'] not in barcodes:
                             skip_bc += 1
                             continue
+                    
                     s_name = sample_name if not barcodes else barcodes[tags['XC']]
                     strand = '-' if read.is_reverse else '+'
                     exons = junctions_from_cigar(read.cigartuples, read.reference_start)
@@ -354,12 +359,15 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     if tr_range[0] < 0 or tr_range[1] > chr_len:
                         logger.error('Alignment outside chromosome range: transcript at %s for chromosome %s of length %s', tr_range, chrom, chr_len)
                         continue
+                    
                     if 'is' in tags:
                         cov = tags['is']  # number of actual reads supporting this transcript
                     else:
                         cov = 1
 
-                    if 'SA' in tags or read.flag & 0x800:  # part of a chimeric alignment
+                    # chimeric alignment check
+                    if 'SA' in tags or read.flag & 0x800:
+                        # store it if it's part of a chimeric alignment and meets the minimum coverage threshold
                         if chimeric_mincov > 0:  # otherwise ignore chimeric read
                             chimeric.setdefault(read.query_name, [{s_name: cov}, []])
                             assert chimeric[read.query_name][0][s_name] == cov, \
@@ -374,6 +382,8 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                                         [snd_align[0], snd_align[2], snd_exons, aligned_part(snd_cigartuples, snd_align[2] == '-'), None])
                                     # logging.debug(chimeric[read.query_name])
                         continue
+                    
+                    # skipping low-quality alignments
                     try:
                         # if edit distance becomes large relative to read length, skip the alignment
                         if min_align_fraction > 0 and (1 - tags['NM'] / read.query_length) < min_align_fraction:
@@ -386,7 +396,9 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
 
                     total_nc_reads_chr[chrom].setdefault(s_name, 0)
                     total_nc_reads_chr[chrom][s_name] += cov
-                    for tr_interval in transcripts.overlap(*tr_range):  # did we see this transcript already?
+
+                    # have we seen this transcript already?
+                    for tr_interval in transcripts.overlap(*tr_range):
                         if tr_interval.data['strand'] != strand:
                             continue
                         if splice_identical(exons, tr_interval.data['exons']):
@@ -416,6 +428,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                         clip = get_clipping(read.cigartuples, read.reference_start)
                         tr.setdefault('clipping', {}).setdefault(s_name, {}).setdefault(clip, 0)
                         tr['clipping'][s_name][clip] += cov
+                
                 for tr_interval in transcripts:
                     tr = tr_interval.data
                     tr_ranges = tr.pop('range')
@@ -424,6 +437,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     for r, cov in tr_ranges.items():
                         starts[r[0]] = starts.get(r[0], 0) + cov
                         ends[r[1]] = ends.get(r[1], 0) + cov
+                    
                     # get the median TSS/PAS
                     tr['exons'][0][0] = get_quantiles(starts.items(), [0.5])[0]
                     tr['exons'][-1][1] = get_quantiles(ends.items(), [0.5])[0]
@@ -433,19 +447,26 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     tr['TSS'] = {s_name: starts if tr['strand'] == '+' else ends}
                     tr['PAS'] = {s_name: starts if tr['strand'] == '-' else ends}
 
+                    # add the transcript to the sample's gene or mark as novel
                     gene = _add_sample_transcript(self, tr, chrom, fuzzy_junction, min_exonic_ref_coverage)
                     if gene is None:
                         novel.add(tr_interval)
                     else:
                         _ = tr.pop('bc_group', None)
+                    
+                    # update the total number of reads processed
                     n_reads -= cov
                     pbar.update(cov / 2)
+                
                 _ = _add_novel_genes(self, novel, chrom)
 
-                pbar.update(n_reads / 2)  # some reads are not processed here, add them to the progress: chimeric, unmapped, secondary alignment
+                # some reads are not processed here, add them to the progress: chimeric, unmapped, secondary alignment
+                pbar.update(n_reads / 2)
+                
                 # logger.debug(f'imported {total_nc_reads_chr[chrom]} nonchimeric reads for {chrom}')
                 for sa, nc_reads in total_nc_reads_chr[chrom].items():
                     sample_nc_reads[sa] = sample_nc_reads.get(sa, 0) + nc_reads
+    
     if partial_count:
         logger.info('skipped %s reads aligned fraction of less than %s.', partial_count, min_align_fraction)
     if skip_bc:
@@ -458,7 +479,6 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         logger.info('ignored %s reads with mapping quality < %s', n_lowqual, min_mapqual)
 
     # merge chimeric reads and assign gene names
-
     n_chimeric = dict()
     # split up chimeric reads in actually chimeric and long introns (non_chimeric)
     # chimeric are grouped by breakpoint (bp->{readname->(chrom, strand, exons)})
@@ -504,7 +524,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         kwargs['nonchimeric_reads'] = sample_nc_reads.get(s_name, 0)
         kwargs['name'] = s_name
         # self.infos['sample_table'] = self.sample_table.append(kwargs, ignore_index=True)
-        self.infos['sample_table'] = pd.concat([self.sample_table, pd.DataFrame([kwargs])])
+        self.infos['sample_table'] = pd.concat([self.sample_table, pd.DataFrame([kwargs])], ignore_index=True)
     self.make_index()
     return total_nc_reads_chr
 
