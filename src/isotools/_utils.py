@@ -239,6 +239,7 @@ def _filter_function(expression, context_filters = {}):
     converts a string e.g. "all(x[0]/x[1]>3)" into a function
     if context_filters is provided, filter tags will be recursively replaced with their expression
     '''
+    assert isinstance(expression, str), 'expression should be a string'
     # extract argument names
     used_filters = []
     depth = 0

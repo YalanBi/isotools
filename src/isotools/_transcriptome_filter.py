@@ -25,7 +25,11 @@ DEFAULT_TRANSCRIPT_FILTER = {
     'FRAGMENT': 'fragments and any("novel exonic " in a or "fragment" in a for a in annotation[1])',
     'UNSPLICED': 'len(exons)==1',
     'MULTIEXON': 'len(exons)>1',
-    'SUBSTANTIAL': 'g.coverage.sum() * .01 < g.coverage[:,trid].sum()'
+    'SUBSTANTIAL': 'g.coverage.sum() * .01 < g.coverage[:,trid].sum()',
+    'HIGH_COVER': 'g.coverage.sum(0)[trid] >= 7',
+    'PERMISSIVE': 'g.coverage.sum() > 2 and (FSM or not (RTTS or INTERNAL_PRIMING or FRAGMENT))',
+    'BALANCED': 'g.coverage.sum() > 2 and (FSM or (HIGH_COVER and not (RTTS or FRAGMENT or INTERNAL_PRIMING)))',
+    'STRICT': 'g.coverage.sum() > 7 and SUBSTANTIAL and (FSM or not (RTTS or FRAGMENT or INTERNAL_PRIMING))',
 }
 
 SPLICE_CATEGORY = ['FSM', 'ISM', 'NIC', 'NNC', 'NOVEL']
@@ -195,7 +199,7 @@ def iter_genes(self, region=None, query=None, min_coverage=None, max_coverage=No
         msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
         assert all(f in all_filter for f in used_tags), msg.format(
             ', '.join(f for f in used_tags if f not in all_filter), ', '.join(all_filter))
-        filter_fun = {tag: _filter_function(self.filter['gene'][tag], self.filter['gene'])[0] for tag in used_tags}
+        filter_fun = {tag: _filter_function(tag, self.filter['gene'])[0] for tag in used_tags}
 
         try:  # test the filter expression with dummy tags
             query_fun(**{tag: True for tag in used_tags})
@@ -258,8 +262,8 @@ def iter_transcripts(self, region=None, query=None, min_coverage=None, max_cover
         msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
         assert all(f in all_filter for f in used_tags), msg.format(
             ', '.join(f for f in used_tags if f not in all_filter), ', '.join(all_filter))
-        tr_filter_fun = {tag: _filter_function(self.filter['transcript'][tag], self.filter['transcript'])[0] for tag in used_tags if tag in self.filter['transcript']}
-        g_filter_fun = {tag: _filter_function(self.filter['gene'][tag], self.filter['gene'])[0] for tag in used_tags if tag in self.filter['gene']}
+        tr_filter_fun = {tag: _filter_function(tag, self.filter['transcript'])[0] for tag in used_tags if tag in self.filter['transcript']}
+        g_filter_fun = {tag: _filter_function(tag, self.filter['gene'])[0] for tag in used_tags if tag in self.filter['gene']}
 
         # test the filter expression with dummy tags
         try:
@@ -300,8 +304,8 @@ def iter_ref_transcripts(self, region=None, query=None, genewise=False, gois=Non
         all_filter = list(self.filter['reference']) + list(self.filter['gene'])
         query_fun, used_tags = _filter_function(query)
         msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
-        ref_filter_fun = {tag: _filter_function(self.filter['reference'][tag], self.filter['reference'])[0] for tag in used_tags if tag in self.filter['reference']}
-        g_filter_fun = {tag: _filter_function(self.filter['gene'][tag], self.filter['gene'])[0] for tag in used_tags if tag in self.filter['gene']}
+        ref_filter_fun = {tag: _filter_function(tag, self.filter['reference'])[0] for tag in used_tags if tag in self.filter['reference']}
+        g_filter_fun = {tag: _filter_function(tag, self.filter['gene'])[0] for tag in used_tags if tag in self.filter['gene']}
         assert all(f in all_filter for f in used_tags), msg.format(
             ', '.join(f for f in used_tags if f not in all_filter), ', '.join(all_filter))
         try:  # test the filter expression with dummy tags
