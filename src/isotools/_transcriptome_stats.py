@@ -148,6 +148,7 @@ def _check_groups(transcriptome, groups, n_groups=2):
     notfound = [sa for grp in groups for sa in grp if sa not in transcriptome.samples]
     if notfound:
         raise ValueError(f"Cannot find the following samples: {notfound}")
+    # todo: do we really need this check of group name? if needed, remind in early stage like importing RNA-seq data
     assert all((gn1 not in gn2 for gn1, gn2 in itertools.permutations(groupnames, 2))), 'group names must not be contained in other group names'
     sa_idx = {sa: idx for sa, idx in transcriptome._get_sample_idx().items()}
     grp_idx = [[sa_idx[sa] for sa in grp] for grp in groups]
@@ -155,7 +156,7 @@ def _check_groups(transcriptome, groups, n_groups=2):
 
 
 def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, min_sa=.51, test='auto', padj_method='fdr_bh',
-                   types=None,  progress_bar=True):
+                   types=None, **kwargs):
     '''Performs the alternative splicing event test.
 
     :param groups: Dict with group names as keys and lists of sample names as values, defining the two groups for the test.
@@ -167,7 +168,8 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     :param min_sa: The fraction of samples within each group that must be covered by at least min_n reads.
     :param test: The name of one of the implemented statistical tests ('betabinom_lr','binom_lr','proportions').
     :param padj_method: Specify the method for multiple testing correction.
-    :param types: Restrict the analysis on types of events. If omitted, all types are tested.'''
+    :param types: Restrict the analysis on types of events. If omitted, all types are tested.
+    :param kwargs: Additional keyword arugments are added to the iter_genes.'''
 
     noORF = (None, None, {'NMD': True})
     groupnames, groups, grp_idx = _check_groups(self, groups)
@@ -189,7 +191,7 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     if min_sa < 1:
         min_sa *= sum(len(gr) for gr in groups[:2])
     res = []
-    for g in self.iter_genes(progress_bar=progress_bar):
+    for g in self.iter_genes(**kwargs):
         if g.coverage[sidx, :].sum() < min_total:
             continue
         known = {}  # check for known events
@@ -254,7 +256,7 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     return df
 
 
-def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', progress_bar=True):
+def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', **kwargs):
     ''' Reimplementation of the DIE test, suggested by Joglekar et al in Nat Commun 12, 463 (2021):
     "A spatially resolved brain region- and cell type-specific isoform atlas of the postnatal mouse brain"
 
@@ -262,12 +264,13 @@ def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', prog
 
     :param groups: Dict with group names as keys and lists of sample names as values, defining the two groups for the test.
     :param min_cov: Minimal number of reads per group for each gene.
-    :param n_isoforms: Number of isoforms to consider in the test for each gene. All additional least expressed isoforms get summarized.'''
+    :param n_isoforms: Number of isoforms to consider in the test for each gene. All additional least expressed isoforms get summarized.
+    :param kwargs: Additional keyword arugments are added to the iter_genes.'''
 
     groupnames, groups, grp_idx = _check_groups(self, groups)
     logger.info('testing differential isoform expression (DIE) for %s.', ' vs '.join(f'{groupnames[i]} ({len(groups[i])})' for i in range(2)))
 
-    result = [(g.id, g.name, g.chrom, g.strand, g.start, g.end)+g.die_test(grp_idx, min_cov, n_isoforms) for g in self.iter_genes(progress_bar=progress_bar)]
+    result = [(g.id, g.name, g.chrom, g.strand, g.start, g.end)+g.die_test(grp_idx, min_cov, n_isoforms) for g in self.iter_genes(**kwargs)]
     result = pd.DataFrame(result, columns=['gene_id', 'gene_name', 'chrom', 'strand', 'start', 'end', 'pvalue', 'deltaPI', 'transcript_ids'])
     mask = np.isfinite(result['pvalue'])
     padj = np.empty(mask.shape)
@@ -277,7 +280,7 @@ def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', prog
     return result
 
 
-def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, samples=None, region=None, query=None, progress_bar=False):
+def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, samples=None, **kwargs):
     '''Finds alternative splicing events.
 
     Finds alternative splicing events and potential transcription start sites/polyA sites
@@ -287,10 +290,7 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
     :param min_total: Minimum total coverage over all selected samples.
     :param min_alt_fraction: Minimum fraction of reads supporting the alternative.
     :param samples: Specify the samples to consider. If omitted, all samples are selected.
-    :param region: Specify the region, either as (chr, start, end) tuple or as "chr:start-end" string.
-        If omitted, the complete genome is searched.
-    :param query: Specify gene filter query.
-    :param progress_bar: If set True the progress is shown.
+    :param kwargs: Additional keyword arugments are added to the iter_genes.
     :return: Table with alternative splicing events.'''
     bubbles = []
     if samples is None:
@@ -300,7 +300,7 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
     sidx = np.array([sa_dict[sa] for sa in samples])
 
     assert 0 < min_alt_fraction < .5, 'min_alt_fraction must be > 0 and < 0.5'
-    for g in self.iter_genes(region=region, query=query, progress_bar=progress_bar):
+    for g in self.iter_genes(**kwargs):
         if g.coverage[sidx, :].sum() < min_total:
             continue
         known = {}  # check for known events
@@ -747,8 +747,8 @@ def rarefaction(self, groups=None, fractions=20, min_coverage=2, tr_filter={}):
 
 
 def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
-                      events_dict=None, event_type=("ES", "5AS", "3AS", "IR", "ME"), query=None, region=None, padj_method="fdr_bh",
-                      progress_bar=True):
+                      events_dict=None, event_type=("ES", "5AS", "3AS", "IR", "ME"), padj_method="fdr_bh",
+                      **kwargs):
     '''Performs gene_coordination_test on all genes.
 
     :param samples: Specify the samples that should be considered in the test.
@@ -767,10 +767,9 @@ def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=1
         Can be generated with the function _utils.precompute_events_dict.
     :param event_type:  A tuple with event types to test. Valid types are ("ES","3AS", "5AS","IR" or "ME", "TSS", "PAS").
         Default is ("ES", "5AS", "3AS", "IR", "ME")
-    :param query: If provided, query string is evaluated on all genes for filtering
-    :param region: The region to be considered. Either a string "chr:start-end", or a tuple (chr,start,end). Start and end is optional.
     :param padj_method: The multiple test adjustment method.
         Any value allowed by statsmodels.stats.multitest.multipletests (default: Benjamini-Hochberg)
+    :param kwargs: Additional keyword arugments are added to the iter_genes.
 
     :return: a Pandas DataFrame, where each column corresponds to the p_values, the statistics
         (the chi squared statistic if the chi squared test is used and the odds-ratio if the Fisher
@@ -785,7 +784,7 @@ def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=1
         _, _, groups = _check_groups(self, [samples], 1)
         samples = groups[0]
 
-    for g in self.iter_genes(region=region, query=query, progress_bar=progress_bar):
+    for g in self.iter_genes(**kwargs):
         events = events_dict.get(g.id, []) if events_dict is not None else None
         try:
             next_test_res = g.coordination_test(test=test, samples=samples, min_dist=min_dist, min_total=min_total,
