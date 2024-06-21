@@ -27,9 +27,9 @@ DEFAULT_TRANSCRIPT_FILTER = {
     'MULTIEXON': 'len(exons)>1',
     'SUBSTANTIAL': 'g.coverage.sum() * .01 < g.coverage[:,trid].sum()',
     'HIGH_COVER': 'g.coverage.sum(0)[trid] >= 7',
-    'PERMISSIVE': 'g.coverage.sum() > 2 and (FSM or not (RTTS or INTERNAL_PRIMING or FRAGMENT))',
-    'BALANCED': 'g.coverage.sum() > 2 and (FSM or (HIGH_COVER and not (RTTS or FRAGMENT or INTERNAL_PRIMING)))',
-    'STRICT': 'g.coverage.sum() > 7 and SUBSTANTIAL and (FSM or not (RTTS or FRAGMENT or INTERNAL_PRIMING))',
+    'PERMISSIVE': 'g.coverage.sum(0)[trid] >= 2 and (FSM or not (RTTS or INTERNAL_PRIMING or FRAGMENT))',
+    'BALANCED': 'g.coverage.sum(0)[trid] >= 2 and (FSM or (HIGH_COVER and not (RTTS or FRAGMENT or INTERNAL_PRIMING)))',
+    'STRICT': 'g.coverage.sum(0)[trid] >= 7 and SUBSTANTIAL and (FSM or not (RTTS or FRAGMENT or INTERNAL_PRIMING))',
 }
 
 SPLICE_CATEGORY = ['FSM', 'ISM', 'NIC', 'NNC', 'NOVEL']
