@@ -234,11 +234,29 @@ def get_intersects(tr1, tr2):
     return sjintersect, intersect
 
 
-def _filter_function(expression):
-    'converts a string e.g. "all(x[0]/x[1]>3) " into a function'
+def _filter_function(expression, context_filters = {}):
+    '''
+    converts a string e.g. "all(x[0]/x[1]>3)" into a function
+    if context_filters is provided, filter tags will be recursively replaced with their expression
+    '''
+    assert isinstance(expression, str), 'expression should be a string'
     # extract argument names
-    f = eval(f'lambda: {expression}')
-    args = [n for n in f.__code__.co_names if n not in dir(builtins)]
+    used_filters = []
+    depth = 0
+    original_expression = expression
+    while True:
+        for filter in used_filters:
+            if filter in context_filters:
+                # brackets around expression prevent unintended "mixing" of neighboring filters
+                expression = expression.replace(filter, f"({context_filters[filter]})")
+        f = eval(f'lambda: {expression}')
+        args = [n for n in f.__code__.co_names if n not in dir(builtins)]
+        used_filters = [arg for arg in args if arg in context_filters]
+        depth += 1
+        if len(used_filters) == 0:
+            break
+        if depth > 10:
+            raise ValueError(f'Filter expression evaluation max depth reached. Expression `{original_expression}` was evaluated to `{expression}`')
 
     # potential issue: g.coverage gets detected as ["g", "coverage"], e.g. coverage is added. Probably not causing trubble
     return eval(f'lambda {",".join([arg+"=None" for arg in args]+["**kwargs"])}: bool({expression})\n', {}, {}), args
