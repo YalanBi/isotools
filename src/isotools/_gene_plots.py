@@ -374,7 +374,7 @@ def sashimi_plot(self, samples=None, title='Long read sashimi plot', ax=None, ju
 
 def gene_track(self, ax=None, title=None, reference=True, select_transcripts=None, label_exon_numbers=True,
                label_transcripts=True, label_fontsize=10, colorbySqanti=True, color='blue', x_range=None, draw_other_genes=False,
-               query=None, mincoverage=None, maxcoverage=None):
+               query=None, min_coverage=None, max_coverage=None):
     '''Draws a gene track of the gene.
 
     The gene track depicts the exon structure of a gene, like in a genome browser.
@@ -396,8 +396,8 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
     :param draw_other_genes: If set to True, transcripts from other genes overlapping the depicted region are also displayed.
         You can also provide a list of gene names/ids, to specify which other genes should be included.
     :param query: Filter query, which is passed to Gene.filter_transcripts or Gene.filter_ref_transcripts
-    :param mincoverage: Minimum coverage for the transcript to be depeicted. Ignored in case of reference=True.
-    :param maxcoverage: Maximum coverage for the transcript to be depeicted. Ignored in case of reference=True.'''
+    :param min_coverage: Minimum coverage for the transcript to be depeicted. Ignored in case of reference=True.
+    :param max_coverage: Maximum coverage for the transcript to be depeicted. Ignored in case of reference=True.'''
 
     if select_transcripts is None:
         select_transcripts = {}
@@ -437,7 +437,7 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
 
     transcript_list = []
     for g in ol_genes:
-        select_tr = g.filter_ref_transcripts(query) if reference else g.filter_transcripts(query, mincoverage, maxcoverage)
+        select_tr = g.filter_ref_transcripts(query) if reference else g.filter_transcripts(query, min_coverage, max_coverage)
         if select_transcripts.get(g.name):
             select_tr = [trid for trid in select_tr if trid in select_transcripts.get(g.name)]
         if reference:  # select transcripts and sort by start
