@@ -148,7 +148,6 @@ def _check_groups(transcriptome, groups, n_groups=2):
     notfound = [sa for grp in groups for sa in grp if sa not in transcriptome.samples]
     if notfound:
         raise ValueError(f"Cannot find the following samples: {notfound}")
-    # todo: do we really need this check of group name? if needed, remind in early stage like importing RNA-seq data
     assert all((gn1 not in gn2 for gn1, gn2 in itertools.permutations(groupnames, 2))), 'group names must not be contained in other group names'
     sa_idx = {sa: idx for sa, idx in transcriptome._get_sample_idx().items()}
     grp_idx = [[sa_idx[sa] for sa in grp] for grp in groups]
@@ -169,7 +168,7 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     :param test: The name of one of the implemented statistical tests ('betabinom_lr','binom_lr','proportions').
     :param padj_method: Specify the method for multiple testing correction.
     :param types: Restrict the analysis on types of events. If omitted, all types are tested.
-    :param kwargs: Additional keyword arugments are added to the iter_genes.'''
+    :param kwargs: Additional keyword arguments are passed to iter_genes.'''
 
     noORF = (None, None, {'NMD': True})
     groupnames, groups, grp_idx = _check_groups(self, groups)

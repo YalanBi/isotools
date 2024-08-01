@@ -296,7 +296,7 @@ def iter_ref_transcripts(self, region=None, query=None, genewise=False, gois=Non
     :param region: The region to be considered. Either a string "chr:start-end", or a tuple (chr,start,end). Start and end is optional.
         If omitted, the complete genome is searched.
     :param genewise: In each iteration, return the gene and all transcript numbers and transcript dicts for the gene as tuples.
-    :param query: If provided, query string is evaluated on all the transcripts for filtering. Note that transcript tags should be used in the query.
+    :param query: The query is evaluated in the transcript context, so only transcript filter tags can be used.
     :param genewise: In each iteration, return the gene and all transcript numbers and transcript dicts for the gene as tuples.
     :param gois: If provided, only transcripts from the list of genes of interest are considered. Provide as a list of gene ids or gene names.
         By default, all the genes are considered.

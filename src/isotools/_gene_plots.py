@@ -396,8 +396,8 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
     :param draw_other_genes: If set to True, transcripts from other genes overlapping the depicted region are also displayed.
         You can also provide a list of gene names/ids, to specify which other genes should be included.
     :param query: Filter query, which is passed to Gene.filter_transcripts or Gene.filter_ref_transcripts
-    :param min_coverage: Minimum coverage for the transcript to be depeicted. Ignored in case of reference=True.
-    :param max_coverage: Maximum coverage for the transcript to be depeicted. Ignored in case of reference=True.'''
+    :param min_coverage: Minimum coverage for the transcript to be depicted. Ignored in case of reference=True.
+    :param max_coverage: Maximum coverage for the transcript to be depicted. Ignored in case of reference=True.'''
 
     if select_transcripts is None:
         select_transcripts = {}
