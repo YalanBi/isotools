@@ -121,22 +121,22 @@ def get_hmmer_sequences(transcriptome, genome_fn, aa_alphabet, query=True, ref_q
     '''Get protein sequences in binary hmmer format.'''
     tr_ids = {}
     if query:
-        for g, trids, _ in transcriptome.iter_transcripts(genewise=True, query=query, region=region, min_coverage=min_coverage,
+        for gene, trids, _ in transcriptome.iter_transcripts(genewise=True, query=query, region=region, min_coverage=min_coverage,
                                                           max_coverage=max_coverage, gois=gois, progress_bar=progress_bar):
-            tr_ids.setdefault(g.id, [[], []])[0] = trids
+            tr_ids.setdefault(gene.id, [[], []])[0] = trids
     if ref_query:
-        for g, trids, _ in transcriptome.iter_ref_transcripts(genewise=True, query=ref_query, region=region, gois=gois, progress_bar=progress_bar):
-            tr_ids.setdefault(g.id, [[], []])[1] = trids
+        for gene, trids, _ in transcriptome.iter_ref_transcripts(genewise=True, query=ref_query, region=region, gois=gois, progress_bar=progress_bar):
+            tr_ids.setdefault(gene.id, [[], []])[1] = trids
 
     sequences = []
     seq_ids = []
     with FastaFile(genome_fn) as genome_fh:
-        for gid in tr_ids:
-            g = transcriptome[gid]
+        for gene_id in tr_ids:
+            gene = transcriptome[gene_id]
             seqs = {}
             for source in range(2):
-                for trid, seq in g.get_sequence(genome_fh, tr_ids[gid][source], protein=True, reference=source).items():
-                    seqs.setdefault(seq, []).append((gid, source, trid))
+                for trid, seq in gene.get_sequence(genome_fh, tr_ids[gene_id][source], protein=True, reference=source).items():
+                    seqs.setdefault(seq, []).append((gene_id, source, trid))
             for seq, seqnames in seqs.items():
                 # Hack: use "name" attribute to store an integer.
                 # Must be string encoded since it is interpreted as 0 terminated string and thus truncated

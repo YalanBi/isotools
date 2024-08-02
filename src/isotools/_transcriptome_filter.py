@@ -80,16 +80,16 @@ def add_orf_prediction(self, genome_fn, progress_bar=True, filter_transcripts={}
             logger.warning('%s contigs are not contained in genome, affecting %s genes. \
                 ORFs cannot be computed for these contigs: %s', str(len(missing_chr)), str(missing_genes), str(missing_chr))
 
-        for g in self.iter_genes(progress_bar=progress_bar):
-            if g.chrom in genome_fh.references:
+        for gene in self.iter_genes(progress_bar=progress_bar):
+            if gene.chrom in genome_fh.references:
                 if filter_transcripts is not None:
-                    g.add_orfs(genome_fh, reference=False, prefer_annotated_init=prefer_annotated_init, minlen=min_len,
-                               min_kozak=min_kozak, max_5utr_len=max_5utr_len, tr_filter=filter_transcripts,
-                               kozak_matrix=kozak_matrix, get_fickett=fickett_score, coding_hexamers=coding, noncoding_hexamers=noncoding)
+                    gene.add_orfs(genome_fh, reference=False, prefer_annotated_init=prefer_annotated_init, minlen=min_len,
+                                  min_kozak=min_kozak, max_5utr_len=max_5utr_len, tr_filter=filter_transcripts,
+                                  kozak_matrix=kozak_matrix, get_fickett=fickett_score, coding_hexamers=coding, noncoding_hexamers=noncoding)
                 if filter_ref_transcripts is not None:
-                    g.add_orfs(genome_fh, reference=True, prefer_annotated_init=prefer_annotated_init, minlen=min_len,
-                               min_kozak=min_kozak, max_5utr_len=max_5utr_len, tr_filter=filter_ref_transcripts,
-                               get_fickett=fickett_score, kozak_matrix=kozak_matrix, coding_hexamers=coding, noncoding_hexamers=noncoding)
+                    gene.add_orfs(genome_fh, reference=True, prefer_annotated_init=prefer_annotated_init, minlen=min_len,
+                                  min_kozak=min_kozak, max_5utr_len=max_5utr_len, tr_filter=filter_ref_transcripts,
+                                  get_fickett=fickett_score, kozak_matrix=kozak_matrix, coding_hexamers=coding, noncoding_hexamers=noncoding)
 
 
 def add_qc_metrics(self, genome_fn, progress_bar=True, downstream_a_len=30, direct_repeat_wd=15, direct_repeat_wobble=2, direct_repeat_mm=2,
@@ -114,19 +114,19 @@ def add_qc_metrics(self, genome_fn, progress_bar=True, downstream_a_len=30, dire
             logger.warning('%s contigs are not contained in genome, affecting %s genes. \
                 Some metrics cannot be computed: %s', str(len(missing_chr)), str(missing_genes), str(missing_chr))
 
-        for g in self.iter_genes(progress_bar=progress_bar):
+        for gene in self.iter_genes(progress_bar=progress_bar):
             if unify_ends:
                 # remove segment graph (if unify TSS/PAS option selected)
-                g.data['segment_graph'] = None
+                gene.data['segment_graph'] = None
                 # "unify" TSS/PAS (if unify TSS/PAS option selected)
-                g._unify_ends()
+                gene._unify_ends()
             # compute segment graph (if not present)
-            _ = g.segment_graph
-            g.add_fragments()
-            if g.chrom in genome_fh.references:
-                g.add_direct_repeat_len(genome_fh, delta=direct_repeat_wd, max_mm=direct_repeat_mm, wobble=direct_repeat_wobble)
-                g.add_noncanonical_splicing(genome_fh)
-                g.add_threeprime_a_content(genome_fh, length=downstream_a_len)
+            _ = gene.segment_graph
+            gene.add_fragments()
+            if gene.chrom in genome_fh.references:
+                gene.add_direct_repeat_len(genome_fh, delta=direct_repeat_wd, max_mm=direct_repeat_mm, wobble=direct_repeat_wobble)
+                gene.add_noncanonical_splicing(genome_fh)
+                gene.add_threeprime_a_content(genome_fh, length=downstream_a_len)
 
     self.infos['biases'] = True  # flag to check that the function was called
 
@@ -159,13 +159,13 @@ def add_filter(self, tag, expression, context='transcript', update=False):
     if not update:
         assert tag not in self.filter[context], f"Filter tag {tag} is already present: `{self.filter[context][tag]}`. Set update=True to re-define."
     if context == 'gene':
-        attributes = {k for g in self for k in g.data.keys() if k.isidentifier()}
+        attributes = {k for gene in self for k in gene.data.keys() if k.isidentifier()}
     else:
         attributes = {'g', 'transcript_id'}
         if context == 'transcript':
-            attributes.update({k for g in self for transcript in g.transcripts for k in transcript.keys() if k.isidentifier()})
+            attributes.update({k for gene in self for transcript in gene.transcripts for k in transcript.keys() if k.isidentifier()})
         elif context == 'reference':
-            attributes.update({k for g in self if g.is_annotated for transcript in g.ref_transcripts for k in transcript.keys() if k.isidentifier()})
+            attributes.update({k for gene in self if gene.is_annotated for transcript in gene.ref_transcripts for k in transcript.keys() if k.isidentifier()})
 
     # test whether the expression can be evaluated
     try:
@@ -237,7 +237,7 @@ def iter_genes(self, region=None, query=None, min_coverage=None, max_coverage=No
             else:
                 raise ValueError('specified chromosome {} not found'.format(chrom))
         if gois is not None:
-            genes = [g for g in genes if g.id in gois or g.name in gois]
+            genes = [gene for gene in genes if gene.id in gois or gene.name in gois]
 
     # often some genes take much longer than others - smoothing 0 means avg
     for gene in tqdm(genes, disable=not progress_bar, unit='genes', smoothing=0):
@@ -352,7 +352,7 @@ def _eval_filter_fun(fun, name, **args):
         # return False   #or continue
 
 
-def _filter_transcripts(g, transcripts,  query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
+def _filter_transcripts(gene, transcripts,  query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
     ''' Iterator over the transcripts of the gene.
 
     Transcrips are specified by lists of flags submitted to the parameters.
@@ -360,11 +360,11 @@ def _filter_transcripts(g, transcripts,  query_fun, filter_fun, g_filter_eval, m
     :param query_fun: function to be evaluated on tags
     :param filter_fun: tags to be evalutated on transcripts'''
     for i, transcript in enumerate(transcripts):
-        if mincoverage and g.coverage[:, i].sum() < mincoverage:
+        if mincoverage and gene.coverage[:, i].sum() < mincoverage:
             continue
-        if maxcoverage and g.coverage[:, i].sum() > maxcoverage:
+        if maxcoverage and gene.coverage[:, i].sum() > maxcoverage:
             continue
         query_result = query_fun is None or query_fun(
-            **g_filter_eval, **{tag: _eval_filter_fun(f, tag, g=g, transcript_id=i, **transcript) for tag, f in filter_fun.items()})
+            **g_filter_eval, **{tag: _eval_filter_fun(f, tag, gene=gene, transcript_id=i, **transcript) for tag, f in filter_fun.items()})
         if query_result:
             yield i, transcript

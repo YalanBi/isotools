@@ -429,7 +429,7 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
 
     if draw_other_genes:
         if isinstance(draw_other_genes, list):
-            ol_genes = {self._transcriptome[g] for g in draw_other_genes}.add(self)
+            ol_genes = {self._transcriptome[gene] for gene in draw_other_genes}.add(self)
         else:
             ol_genes = self._transcriptome.data[self.chrom].overlap(*x_range)
     else:

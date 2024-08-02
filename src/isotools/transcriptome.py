@@ -126,19 +126,20 @@ class Transcriptome:
         # extract the reference genes and link them to the new ref_tr
         keep = {'ID', 'chr', 'strand', 'name', 'reference'}  # no coverage, segment_graph, transcripts
         for chrom, tree in self.data.items():
-            ref_transcriptome.data[chrom] = IntervalTree(Gene(g.start, g.end, {k: v
-                                              for k, v in g.data.items() if k in keep}, ref_transcriptome) for g in tree if g.is_annotated)
+            ref_transcriptome.data[chrom] = IntervalTree(Gene(gene.start, gene.end, {k: v
+                                                for k, v in gene.data.items() if k in keep}, ref_transcriptome)
+                                                for gene in tree if gene.is_annotated)
         ref_transcriptome.make_index()
         return ref_transcriptome
 
     def make_index(self):
         '''Updates the index of gene names and ids (e.g. used by the the [] operator).'''
         idx = dict()
-        for g in self:
-            if g.id in idx:  # at least id should be unique - maybe raise exception?
-                logger.warning('%s seems to be ambigous: %s vs %s', g.id, str(idx[g.id]), str(g))
-            idx[g.name] = g
-            idx[g.id] = g
+        for gene in self:
+            if gene.id in idx:  # at least id should be unique - maybe raise exception?
+                logger.warning('%s seems to be ambigous: %s vs %s', gene.id, str(idx[gene.id]), str(gene))
+            idx[gene.name] = gene
+            idx[gene.id] = gene
         self._idx = idx
 
     # basic user level functionality
@@ -202,7 +203,7 @@ class Transcriptome:
         '''The total number of transcripts isoforms.'''
         if self.data is None:
             return 0
-        return sum(g.n_transcripts for g in self)
+        return sum(gene.n_transcripts for gene in self)
 
     @property
     def n_genes(self) -> int:

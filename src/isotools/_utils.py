@@ -275,7 +275,7 @@ def _filter_function(expression, context_filters = {}):
         if depth > 10:
             raise ValueError(f'Filter expression evaluation max depth reached. Expression `{original_expression}` was evaluated to `{expression}`')
 
-    # potential issue: g.coverage gets detected as ["g", "coverage"], e.g. coverage is added. Probably not causing trubble
+    # potential issue: gene.coverage gets detected as ["gene", "coverage"], e.g. coverage is added. Probably not causing trubble
     return eval(f'lambda {",".join([arg+"=None" for arg in args]+["**kwargs"])}: bool({expression})\n', {}, {}), args
 
 
