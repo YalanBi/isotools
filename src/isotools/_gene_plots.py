@@ -445,39 +445,39 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
         else:
             transcript_list.extend([(gene, transcript_number, transcript) for transcript_number, transcript in enumerate(gene.transcripts) if transcript_number in select_tr])
     transcript_list.sort(key=lambda x: x[2]['exons'][0][0])  # sort by start position
-    for gene, tr_nr, transcript in transcript_list:
-        tr_start, tr_end = transcript['exons'][0][0], transcript['exons'][-1][1]
-        if (tr_end < x_range[0] or tr_start > x_range[1]):  # transcript does not overlap x_range
+    for gene, transcript_number, transcript in transcript_list:
+        transcript_start, transcript_end = transcript['exons'][0][0], transcript['exons'][-1][1]
+        if (transcript_end < x_range[0] or transcript_start > x_range[1]):  # transcript does not overlap x_range
             continue
         transcript_id = '> ' if gene.strand == '+' else '< '  # indicate the strand like in ensembl browser
-        transcript_id += transcript['transcript_name'] if 'transcript_name' in transcript else f'{gene.name}_{tr_nr}'
+        transcript_id += transcript['transcript_name'] if 'transcript_name' in transcript else f'{gene.name}_{transcript_number}'
 
         # find next line that is not blocked
         try:
             i = next(idx for idx, last in enumerate(blocked) if last < transcript['exons'][0][0])
         except StopIteration:
             i = len(blocked)
-            blocked.append(tr_end)
+            blocked.append(transcript_end)
         else:
-            blocked[i] = tr_end
+            blocked[i] = transcript_end
 
         # use SQANTI color palette if colorbySqanti is True
         if colorbySqanti:
             color = sqanti_palette[transcript['annotation'][0]]['color']
 
         # line from TSS to PAS at 0.25
-        ax.plot((tr_start, tr_end), [i + .25] * 2, color=color)
+        ax.plot((transcript_start, transcript_end), [i + .25] * 2, color=color)
         if label_transcripts:
-            pos = (max(tr_start, x_range[0]) + min(tr_end, x_range[1])) / 2
+            pos = (max(transcript_start, x_range[0]) + min(transcript_end, x_range[1])) / 2
             ax.text(pos, i - .02, transcript_id, ha='center', va='top', fontsize=label_fontsize, clip_on=True)
-        for j, (st, end) in enumerate(transcript['exons']):
+        for j, (start, end) in enumerate(transcript['exons']):
             cds = None
             if 'CDS' in transcript or 'ORF' in transcript:
                 cds = transcript['CDS'] if 'CDS' in transcript else transcript['ORF']
-            if cds is not None and cds[0] <= end and cds[1] >= st:  # CODING exon
-                c_st, c_end = max(st, cds[0]), min(cds[1], end)  # coding start and coding end
-                if c_st > st:  # first noncoding part
-                    rect = patches.Rectangle((st, i + .125), (c_st - st), .25, linewidth=1, edgecolor=color, facecolor=color)
+            if cds is not None and cds[0] <= end and cds[1] >= start:  # CODING exon
+                c_st, c_end = max(start, cds[0]), min(cds[1], end)  # coding start and coding end
+                if c_st > start:  # first noncoding part
+                    rect = patches.Rectangle((start, i + .125), (c_st - start), .25, linewidth=1, edgecolor=color, facecolor=color)
                     ax.add_patch(rect)
                 if c_end < end:  # 2nd noncoding part
                     rect = patches.Rectangle((c_end, i + .125), (end - c_end), .25, linewidth=1, edgecolor=color, facecolor=color)
@@ -486,11 +486,11 @@ def gene_track(self, ax=None, title=None, reference=True, select_transcripts=Non
                 rect = patches.Rectangle((c_st, i), (c_end - c_st), .5, linewidth=1, edgecolor=color, facecolor=color)
                 ax.add_patch(rect)
             else:  # non coding
-                rect = patches.Rectangle((st, i + .125), (end - st), .25, linewidth=1, edgecolor=color, facecolor=color)
+                rect = patches.Rectangle((start, i + .125), (end - start), .25, linewidth=1, edgecolor=color, facecolor=color)
                 ax.add_patch(rect)
-            if label_exon_numbers and (end > x_range[0] and st < x_range[1]):
+            if label_exon_numbers and (end > x_range[0] and start < x_range[1]):
                 enr = j + 1 if gene.strand == '+' else len(transcript['exons']) - j
-                pos = (max(st, x_range[0]) + min(end, x_range[1])) / 2
+                pos = (max(start, x_range[0]) + min(end, x_range[1])) / 2
                 ax.text(pos, i + .25, enr, ha='center', va='center', color=contrast, fontsize=label_fontsize,
                         clip_on=True)  # bbox=dict(boxstyle='round', facecolor='wheat',edgecolor=None,  alpha=0.5)
         i += 1
@@ -697,7 +697,7 @@ def plot_domains(self, source, categories=None, transcript_ids=True, ref_transcr
     if coding_only:
         ref_transcript_ids = [transcript_id for transcript_id in ref_transcript_ids if 'ORF' in self.ref_transcripts[transcript_id] or 'CDS' in self.ref_transcripts[transcript_id]]
     transcripts = [(i, self.ref_transcripts[i]) for i in ref_transcript_ids] + [(i, self.transcripts[i]) for i in transcript_ids]
-    n_tr = len(transcripts)
+    n_transcripts = len(transcripts)
     if not transcripts:
         logger.error('no transcripts with ORF specified')
         return
@@ -724,10 +724,10 @@ def plot_domains(self, source, categories=None, transcript_ids=True, ref_transcr
                 assert len(pos) == 2, 'provide intervals as a sequence of length 2'
                 # draw box
                 box_x = sorted(pos_map[p] for p in pos)
-                patch = patches.Rectangle((box_x[0], -n_tr), box_x[1]-box_x[0], n_tr+1, edgecolor=highlight_col, facecolor=highlight_col)
+                patch = patches.Rectangle((box_x[0], -n_transcripts), box_x[1]-box_x[0], n_transcripts+1, edgecolor=highlight_col, facecolor=highlight_col)
                 ax.add_patch(patch)
             else:  # draw line
-                ax.vlines(pos_map[pos], -n_tr, 1, colors=[highlight_col])
+                ax.vlines(pos_map[pos], -n_transcripts, 1, colors=[highlight_col])
 
     for line, (transcript_id, transcript) in enumerate(transcripts):
         seg = segments[line]
