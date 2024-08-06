@@ -148,16 +148,16 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
     # assert cov_tab.index.is_unique, 'ambigous transcript ids in %s' % coverage_csv_file
     # check sample properties
     if sample_properties is None:
-        sample_properties = {sa: {'group': sa} for sa in samples}
+        sample_properties = {sample: {'group': sample} for sample in samples}
     elif isinstance(sample_properties, pd.DataFrame):
         if 'name' in sample_properties:
             sample_properties = sample_properties.set_index('name')
-        sample_properties = {sa: {k: v for k, v in row.items() if k not in {'file', 'nonchimeric_reads', 'chimeric_reads'}}
-                             for sa, row in sample_properties.iterrows()}
-    assert all(sa in sample_properties for sa in samples), 'missing sample_properties for samples %s' % ', '.join(
-        (sa for sa in samples if sa not in sample_properties))
-    for sa in sample_properties:
-        sample_properties[sa].setdefault('group', sa)
+        sample_properties = {sample: {k: v for k, v in row.items() if k not in {'file', 'nonchimeric_reads', 'chimeric_reads'}}
+                             for sample, row in sample_properties.iterrows()}
+    assert all(sample in sample_properties for sample in samples), 'missing sample_properties for samples %s' % ', '.join(
+        (sample for sample in samples if sample not in sample_properties))
+    for sample in sample_properties:
+        sample_properties[sample].setdefault('group', sample)
 
     logger.info('adding samples "%s" from csv', '", "'.join(samples))
     # consider chromosomes not in the reference?
@@ -204,10 +204,10 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
             transcript = transcripts[row.gene_id][row.transcript_id]
             transcript['transcript_id'] = row.transcript_id
             transcript['exons'] = sorted([list(e) for e in exons[row.transcript_id]])  # needs to be mutable
-            transcript['coverage'] = {sa: row[sample_cov_cols[sa]] for sa in samples if row[sample_cov_cols[sa]] > 0}
+            transcript['coverage'] = {sample: row[sample_cov_cols[sample]] for sample in samples if row[sample_cov_cols[sample]] > 0}
             transcript['strand'] = gene_infos[row.chr][row.gene_id][0]['strand']  # gene_infos is a 3 tuple (info, start, end)
-            transcript['TSS'] = {sa: {transcript['exons'][0][0]: row[sample_cov_cols[sa]]} for sa in samples if row[sample_cov_cols[sa]] > 0}
-            transcript['PAS'] = {sa: {transcript['exons'][-1][1]: row[sample_cov_cols[sa]]} for sa in samples if row[sample_cov_cols[sa]] > 0}
+            transcript['TSS'] = {sample: {transcript['exons'][0][0]: row[sample_cov_cols[sample]]} for sample in samples if row[sample_cov_cols[sample]] > 0}
+            transcript['PAS'] = {sample: {transcript['exons'][-1][1]: row[sample_cov_cols[sample]]} for sample in samples if row[sample_cov_cols[sample]] > 0}
             if transcript['strand'] == '-':
                 transcript['TSS'], transcript['PAS'] = transcript['PAS'], transcript['TSS']
             used_transcripts.add(row.transcript_id)
@@ -251,10 +251,10 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
                 if import_id != gene.id:
                     id_map[import_id] = gene.id
     # todo: extend sample_table
-    for sa in samples:
-        sample_properties[sa].update({'name': sa, 'file': coverage_csv_file, 'nonchimeric_reads': cov_tab[sample_cov_cols[sa]].sum(), 'chimeric_reads': 0})
-        # self.infos['sample_table'] = self.sample_table.append(sample_properties[sa], ignore_index=True)
-        self.infos['sample_table'] = pd.concat([self.sample_table, pd.DataFrame([sample_properties[sa]])], ignore_index=True)
+    for sample in samples:
+        sample_properties[sample].update({'name': sample, 'file': coverage_csv_file, 'nonchimeric_reads': cov_tab[sample_cov_cols[sample]].sum(), 'chimeric_reads': 0})
+        # self.infos['sample_table'] = self.sample_table.append(sample_properties[sample], ignore_index=True)
+        self.infos['sample_table'] = pd.concat([self.sample_table, pd.DataFrame([sample_properties[sample]])], ignore_index=True)
 
     self.make_index()
     return id_map
@@ -299,8 +299,8 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         if sample_name is not None:
             barcodes = barcodes.apply(lambda x: '{}_{}'.format(sample_name, x))
         barcodes = barcodes.to_dict()
-        assert all(sa not in self.samples for sa in barcodes), \
-            'samples %s are already in the data set.' % ', '.join(sa for sa in barcodes if sa in self.samples)
+        assert all(sample not in self.samples for sample in barcodes), \
+            'samples %s are already in the data set.' % ', '.join(sample for sample in barcodes if sample in self.samples)
         logger.info('adding %s transcriptomes in %s groups as specified in %s from file %s',
                     len(set(barcodes.keys())), len(set(barcodes.values())), barcode_file, fn)
         # add reverse complement
@@ -1319,7 +1319,7 @@ def transcript_table(self,  samples=None,  groups=None, coverage=False, tpm=Fals
         sample_i = slice(None)
     else:
         all_samples = False
-        sample_i = [i for i, sa in enumerate(self.samples) if sa in samples_set]
+        sample_i = [i for i, sample in enumerate(self.samples) if sample in samples_set]
 
     if not isinstance(extra_columns, list):
         raise ValueError('extra_columns should be provided as list')
@@ -1351,7 +1351,7 @@ def transcript_table(self,  samples=None,  groups=None, coverage=False, tpm=Fals
     df = pd.DataFrame(rows, columns=colnames)
     if cov:
         df_list = [df]
-        cov = pd.DataFrame(np.concatenate(cov, 1).T, columns=self.samples if all_samples else [sa for i, sa in enumerate(self.samples) if i in sample_i])
+        cov = pd.DataFrame(np.concatenate(cov, 1).T, columns=self.samples if all_samples else [sample for i, sample in enumerate(self.samples) if i in sample_i])
         stab = self.sample_table.set_index('name')
         if samples:
             if coverage:
@@ -1360,11 +1360,11 @@ def transcript_table(self,  samples=None,  groups=None, coverage=False, tpm=Fals
                 total = stab.loc[samples, 'nonchimeric_reads']+tpm_pseudocount*cov.shape[0]
                 df_list.append(((cov[samples]+tpm_pseudocount)/total*1e6).add_suffix('_tpm'))
         if groups:
-            cov_gr = pd.DataFrame({gn: cov[sa].sum(1) for gn, sa in groups.items()})
+            cov_gr = pd.DataFrame({group_name: cov[sample].sum(1) for group_name, sample in groups.items()})
             if coverage:
                 df_list.append(cov_gr.add_suffix('_sum_coverage'))
             if tpm:
-                total = {gn: stab.loc[sa, 'nonchimeric_reads'].sum()+tpm_pseudocount*cov.shape[0] for gn, sa in groups.items()}
+                total = {group_name: stab.loc[sample, 'nonchimeric_reads'].sum()+tpm_pseudocount*cov.shape[0] for group_name, sample in groups.items()}
                 df_list.append(((cov_gr+tpm_pseudocount)/total*1e6).add_suffix('_sum_tpm'))
         df = pd.concat(df_list, axis=1)
 
@@ -1390,7 +1390,7 @@ def chimeric_table(self, region=None, query=None):  # , star_chimeric=None, illu
         raise NotImplementedError
     chim_tab = list()
     for bp, chimeric in self.chimeric.items():
-        cov = tuple(sum(c.get(sa, 0) for c, _ in chimeric) for sa in self.samples)
+        cov = tuple(sum(c.get(sample, 0) for c, _ in chimeric) for sample in self.samples)
         genes = [info[4] if info[4] is not None else 'intergenic' for info in chimeric[0][1]]
         for i, bp_i in enumerate(bp):
             chim_tab.append(('_'.join(genes),) + bp_i[: 3] + (genes[i],) + bp_i[3:] + (genes[i + 1],) + (sum(cov),) + cov)
@@ -1477,9 +1477,9 @@ def export_alternative_splicing(self, out_dir, out_format='mats', reference=Fals
     out_file = {st: out_dir + '/' + file_name.format(st) for st in types.values()}
     if samples is None:
         samples = self.samples
-    assert all(s in self.samples for s in samples), 'not all specified samples found'
-    sa_dict = {sa: i for i, sa in enumerate(self.samples)}
-    sidx = np.array([sa_dict[sa] for sa in samples])
+    assert all(sample in self.samples for sample in samples), 'not all specified samples found'
+    sample_dict = {sample: i for i, sample in enumerate(self.samples)}
+    sidx = np.array([sample_dict[sample] for sample in samples])
 
     assert 0 < min_alt_fraction < .5, 'min_alt_fraction must be > 0 and < 0.5'
     count = {st: 0 for st in types.values()}

@@ -161,7 +161,7 @@ def add_filter(self, tag, expression, context='transcript', update=False):
     if context == 'gene':
         attributes = {k for gene in self for k in gene.data.keys() if k.isidentifier()}
     else:
-        attributes = {'g', 'transcript_id'}
+        attributes = {'gene', 'transcript_id'}
         if context == 'transcript':
             attributes.update({k for gene in self for transcript in gene.transcripts for k in transcript.keys() if k.isidentifier()})
         elif context == 'reference':

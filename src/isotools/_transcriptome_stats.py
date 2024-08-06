@@ -189,7 +189,7 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     logger.info('testing differential splicing for %s using %s test', ' vs '.join(f'{groupnames[i]} ({len(groups[i])})' for i in range(2)), test_name)
 
     if min_sa < 1:
-        min_sa *= sum(len(gr) for gr in groups[:2])
+        min_sa *= sum(len(group) for group in groups[:2])
     res = []
     for gene in self.iter_genes(**kwargs):
         if gene.coverage[sidx, :].sum() < min_total:

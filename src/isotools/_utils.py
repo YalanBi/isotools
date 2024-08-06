@@ -143,29 +143,29 @@ def is_same_gene(tr1, tr2, spj_iou_th=0, reg_iou_th=.5):
     return False
 
 
-def splice_identical(tr1, tr2, strictness=math.inf):
+def splice_identical(exon_list1, exon_list2, strictness=math.inf):
     '''
     Check whether two transcripts are identical in terms of splice sites.
-    :param tr1: transcript 1 as a list of tuples for each exon
-    :param tr2: transcript 2 as a list of tuples for each exon
+    :param exon_list1: transcript 1 as a list of tuples for each exon
+    :param exon_list2: transcript 2 as a list of tuples for each exon
     :param strictness: Number of bp that are allowed to differ for transcription start and end sites to be still considered identical.
     '''
     # all splice sites are equal
     # different number of exons
-    if len(tr1) != len(tr2):
+    if len(exon_list1) != len(exon_list2):
         return False
     # single exon genes
-    if len(tr1) == 1 and has_overlap(tr1[0], tr2[0]):
+    if len(exon_list1) == 1 and has_overlap(exon_list1[0], exon_list2[0]):
         return True
     # Check start of first and end of last exon
-    if abs(tr1[0][0] - tr2[0][0]) > strictness or abs(tr1[-1][1] - tr2[-1][1]) > strictness:
+    if abs(exon_list1[0][0] - exon_list2[0][0]) > strictness or abs(exon_list1[-1][1] - exon_list2[-1][1]) > strictness:
         return False
     # check end of first and and start of last exon
-    if tr1[0][1] != tr2[0][1] or tr1[-1][0] != tr2[-1][0]:
+    if exon_list1[0][1] != exon_list2[0][1] or exon_list1[-1][0] != exon_list2[-1][0]:
         return False
     # check other exons
-    for e1, e2 in zip(tr1[1:-1], tr2[1:-1]):
-        if e1[0] != e2[0] or e1[1] != e2[1]:
+    for exon1, exon2 in zip(exon_list1[1:-1], exon_list2[1:-1]):
+        if exon1[0] != exon2[0] or exon1[1] != exon2[1]:
             return False
     return True
 
