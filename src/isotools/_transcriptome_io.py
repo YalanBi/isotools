@@ -282,7 +282,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         This should only be specified if the secondary alignment is not reported in a seperate bam entry.
     :param save_readnames: Save a list of the readnames, that contributed to the transcript.
     :param progress_bar: Show the progress.
-    :param kwargs: Additional keyword arugments are added to the sample table.'''
+    :param kwargs: Additional keyword arguments are added to the sample table.'''
 
     # todo: one alignment may contain several samples - this is not supported at the moment
     if barcode_file is None:
@@ -311,7 +311,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
             chromosomes = align.references
         else:
             chromosomes = self.chromosomes
-        
+
         # a sum of reads mapped/unmapped for each chromosome
         stats = align.get_index_statistics()
         # try catch if sam/ no index /not pacbio?
@@ -346,12 +346,12 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                         n_lowqual += 1
                         continue
                     tags = dict(read.tags)
-                    
+
                     if barcodes:
                         if 'XC' not in tags or tags['XC'] not in barcodes:
                             skip_bc += 1
                             continue
-                    
+
                     s_name = sample_name if not barcodes else barcodes[tags['XC']]
                     strand = '-' if read.is_reverse else '+'
                     exons = junctions_from_cigar(read.cigartuples, read.reference_start)
@@ -359,7 +359,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     if tr_range[0] < 0 or tr_range[1] > chr_len:
                         logger.error('Alignment outside chromosome range: transcript at %s for chromosome %s of length %s', tr_range, chrom, chr_len)
                         continue
-                    
+
                     if 'is' in tags:
                         cov = tags['is']  # number of actual reads supporting this transcript
                     else:
@@ -382,7 +382,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                                         [snd_align[0], snd_align[2], snd_exons, aligned_part(snd_cigartuples, snd_align[2] == '-'), None])
                                     # logging.debug(chimeric[read.query_name])
                         continue
-                    
+
                     # skipping low-quality alignments
                     try:
                         # if edit distance becomes large relative to read length, skip the alignment
@@ -428,7 +428,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                         clip = get_clipping(read.cigartuples, read.reference_start)
                         tr.setdefault('clipping', {}).setdefault(s_name, {}).setdefault(clip, 0)
                         tr['clipping'][s_name][clip] += cov
-                
+
                 for tr_interval in transcripts:
                     tr = tr_interval.data
                     tr_ranges = tr.pop('range')
@@ -437,7 +437,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                     for r, cov in tr_ranges.items():
                         starts[r[0]] = starts.get(r[0], 0) + cov
                         ends[r[1]] = ends.get(r[1], 0) + cov
-                    
+
                     # get the median TSS/PAS
                     tr['exons'][0][0] = get_quantiles(starts.items(), [0.5])[0]
                     tr['exons'][-1][1] = get_quantiles(ends.items(), [0.5])[0]
@@ -453,20 +453,20 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
                         novel.add(tr_interval)
                     else:
                         _ = tr.pop('bc_group', None)
-                    
+
                     # update the total number of reads processed
                     n_reads -= cov
                     pbar.update(cov / 2)
-                
+
                 _ = _add_novel_genes(self, novel, chrom)
 
                 # some reads are not processed here, add them to the progress: chimeric, unmapped, secondary alignment
                 pbar.update(n_reads / 2)
-                
+
                 # logger.debug(f'imported {total_nc_reads_chr[chrom]} nonchimeric reads for {chrom}')
                 for sa, nc_reads in total_nc_reads_chr[chrom].items():
                     sample_nc_reads[sa] = sample_nc_reads.get(sa, 0) + nc_reads
-    
+
     if partial_count:
         logger.info('skipped %s reads aligned fraction of less than %s.', partial_count, min_align_fraction)
     if skip_bc:
