@@ -264,7 +264,7 @@ def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', **kw
     :param groups: Dict with group names as keys and lists of sample names as values, defining the two groups for the test.
     :param min_cov: Minimal number of reads per group for each gene.
     :param n_isoforms: Number of isoforms to consider in the test for each gene. All additional least expressed isoforms get summarized.
-    :param kwargs: Additional keyword arguments are added to the iter_genes.'''
+    :param kwargs: Additional keyword arguments are passed to iter_genes.'''
 
     groupnames, groups, grp_idx = _check_groups(self, groups)
     logger.info('testing differential isoform expression (DIE) for %s.', ' vs '.join(f'{groupnames[i]} ({len(groups[i])})' for i in range(2)))
@@ -289,7 +289,7 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
     :param min_total: Minimum total coverage over all selected samples.
     :param min_alt_fraction: Minimum fraction of reads supporting the alternative.
     :param samples: Specify the samples to consider. If omitted, all samples are selected.
-    :param kwargs: Additional keyword arguments are added to the iter_genes.
+    :param kwargs: Additional keyword arguments are passed to iter_genes.
     :return: Table with alternative splicing events.'''
     bubbles = []
     if samples is None:
@@ -768,7 +768,7 @@ def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=1
         Default is ("ES", "5AS", "3AS", "IR", "ME")
     :param padj_method: The multiple test adjustment method.
         Any value allowed by statsmodels.stats.multitest.multipletests (default: Benjamini-Hochberg)
-    :param kwargs: Additional keyword arguments are added to the iter_genes.
+    :param kwargs: Additional keyword arguments are passed to iter_genes.
 
     :return: a Pandas DataFrame, where each column corresponds to the p_values, the statistics
         (the chi squared statistic if the chi squared test is used and the odds-ratio if the Fisher
