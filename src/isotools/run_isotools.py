@@ -357,11 +357,11 @@ def test_differential(isoseq, groups, illu_groups, args, file_suffix):
             sig_tab = res.head(args.diff_plots)
             if illu_groups:
                 illu_cov = list()
-                for g, jstart, jend in zip(sig_tab.gene, sig_tab.start, sig_tab.end):
+                for gene, jstart, jend in zip(sig_tab.gene, sig_tab.start, sig_tab.end):
                     ji = (jstart, jend)
                     # g_cov=[0,0,0,0]
                     j_cov = [{}, {}]
-                    cov = isoseq[g].illumina_coverage
+                    cov = isoseq[gene].illumina_coverage
                     for gi, grp_n in enumerate(gr):
                         if grp_n not in illu_groups:
                             j_cov[gi] = 'NA'

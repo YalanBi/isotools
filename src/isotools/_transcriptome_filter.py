@@ -352,7 +352,7 @@ def _eval_filter_fun(fun, name, **args):
         # return False   #or continue
 
 
-def _filter_transcripts(gene, transcripts,  query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
+def _filter_transcripts(gene, transcripts, query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
     ''' Iterator over the transcripts of the gene.
 
     Transcrips are specified by lists of flags submitted to the parameters.
