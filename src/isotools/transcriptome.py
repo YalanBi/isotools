@@ -84,12 +84,10 @@ class Transcriptome:
         transcriptome.make_index()
         return transcriptome
 
-    def save(self, pickle_file: Optional[str] = None):
+    def save(self, pickle_file: str):
         '''Saves transcriptome information (including reference) in a pickle file.
 
         :param pickle_file: Filename to save data'''
-        if pickle_file is None:
-            pickle_file = self.infos['out_file_name'] + '.isotools.pkl'  # key error if not set
         logger.info('saving transcriptome to %s', pickle_file)
         pickle.dump(self, open(pickle_file, 'wb'))
 

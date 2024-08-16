@@ -373,12 +373,12 @@ def _find_splice_sites(splice_junctions, transcripts):
 
     transcript_list = [iter(transcript['exons'][:-1]) for transcript in transcripts if len(transcript['exons']) > 1]
     current = [next(transcript) for transcript in transcript_list]
-    for splice_junction, idx in sorted(splice_junction_starts.items()):  # splice junction starts, sorted by position
+    for splice_junction_start, idx in sorted(splice_junction_starts.items()):  # splice junction starts, sorted by position
         for j, transcript_iter in enumerate(transcript_list):
             try:
-                while splice_junction > current[j][1]:
+                while splice_junction_start > current[j][1]:
                     current[j] = next(transcript_iter)
-                if current[j][1] == splice_junction:
+                if current[j][1] == splice_junction_start:
                     for i in idx:
                         sites[i * 2] = True
                     break
@@ -387,12 +387,12 @@ def _find_splice_sites(splice_junctions, transcripts):
     # check exon starts
     transcript_list = [iter(transcript['exons'][1:]) for transcript in transcripts if len(transcript['exons']) > 1]
     current = [next(transcript) for transcript in transcript_list]
-    for sje, idx in sorted(splice_junction_ends.items()):  # splice junction ends, sorted by position
+    for splice_junction_end, idx in sorted(splice_junction_ends.items()):  # splice junction ends, sorted by position
         for j, transcript_iter in enumerate(transcript_list):
             try:
-                while sje > current[j][0]:
+                while splice_junction_end > current[j][0]:
                     current[j] = next(transcript_iter)
-                if current[j][0] == sje:
+                if current[j][0] == splice_junction_end:
                     for i in idx:
                         sites[i * 2 + 1] = True
                     break
