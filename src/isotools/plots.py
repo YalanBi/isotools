@@ -58,11 +58,11 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
             continue
         params_alt = {group_name: (row[f'{group_name}_PSI'], row[f'{group_name}_disp']) for group_name in group_names}
         # select only samples covered >= min_cov
-        # psi_gr = {gn: [row[f'{sa}_in_cov'] / row[f'{sa}_total_cov'] for sa in gr if row[f'{sa}_total_cov'] >= min_cov] for gn, gr in groups.items()}
-        psi_gr_list = [(sa, gn, row[f'{sa}_{gn}_in_cov'] / row[f'{sa}_{gn}_total_cov'])
-                       for gn, gr in groups.items() for sa in gr if row[f'{sa}_{gn}_total_cov'] >= min_cov]
+        # psi_gr = {groupname: [row[f'{sample}_in_cov'] / row[f'{sample}_total_cov'] for sample in group if row[f'{sample}_total_cov'] >= min_cov] for groupname, group in groups.items()}
+        psi_gr_list = [(sample, groupname, row[f'{sample}_{groupname}_in_cov'] / row[f'{sample}_{groupname}_total_cov'])
+                       for groupname, group in groups.items() for sample in group if row[f'{sample}_{groupname}_total_cov'] >= min_cov]
         psi_gr = pd.DataFrame(psi_gr_list, columns=['sample', 'group', 'psi'])
-        psi_gr['support'] = [abs(sa.psi - params_alt[sa['group']][0]) < abs(sa.psi - params_alt[other[sa['group']]][0]) for i, sa in psi_gr.iterrows()]
+        psi_gr['support'] = [abs(sample.psi - params_alt[sample['group']][0]) < abs(sample.psi - params_alt[other[sample['group']]][0]) for i, sample in psi_gr.iterrows()]
         support = dict(psi_gr.groupby('group')['support'].sum())
         if any(sup < min_support for sup in support.values()):
             logger.debug('skipping %s with %s supporters', row.gene, support)
@@ -144,9 +144,9 @@ def plot_embedding(splice_bubbles, method='PCA', prior_count=3,
     if groups is None:
         groups = {'all samples': samples}
     else:
-        sa_group = {sa: gn for gn, salist in groups.items() for sa in salist if sa in samples}
+        sa_group = {sample: groupname for groupname, sample_list in groups.items() for sample in sample_list if sample in samples}
         if len(samples) > len(sa_group):
-            samples = [sa for sa in samples if sa in sa_group]
+            samples = [sample for sample in samples if sample in sa_group]
             logger.info('restricting embedding on samples ' + ', '.join(samples))
             n = n[samples]
             k = k[samples]
@@ -186,11 +186,11 @@ def plot_embedding(splice_bubbles, method='PCA', prior_count=3,
 
     if ax is None:
         _, ax = plt.subplots()
-    for gr, sa in groups.items():
+    for group, sample in groups.items():
         ax.scatter(
-            transformed.loc[sa, plot_components[0] - 1],
-            transformed.loc[sa, plot_components[1] - 1],
-            c=colors[gr], label=gr, s=pt_size)
+            transformed.loc[sample, plot_components[0] - 1],
+            transformed.loc[sample, plot_components[1] - 1],
+            c=colors[group], label=group, s=pt_size)
     ax.set(**axparams)
     if labels:
         for idx, (x, y) in transformed[plot_components - 1].iterrows():
@@ -320,10 +320,10 @@ def plot_saturation(isoseq=None, ax=None, cov_th=2, expr_th=[.5, 1, 2, 5, 10], x
     for tpm_th in expr_th:
         chance = nbinom.cdf(k - cov_th, n=cov_th, p=tpm_th * 1e-6)  # 0 to k-cov_th failiors
         ax.plot(k / 1e6, chance, label=f'{tpm_th} TPM')
-    for sa, cov in n_reads.items():
+    for sample, cov in n_reads.items():
         ax.axvline(cov / 1e6, color='grey', ls='--')
         if label:
-            ax.text((cov + (k[-1] - k[0]) / 200) / 1e6, 0.1, f'{sa} ({cov/1e6:.2f} M)', rotation=-90)
+            ax.text((cov + (k[-1] - k[0]) / 200) / 1e6, 0.1, f'{sample} ({cov/1e6:.2f} M)', rotation=-90)
     ax.set(**axparams)
 
     if legend:

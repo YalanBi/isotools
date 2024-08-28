@@ -172,7 +172,7 @@ class Transcriptome:
 
     def _get_sample_idx(self, name_column='name'):
         'a dict with group names as keys and index lists as values'
-        return {sa: i for i, sa in enumerate(self.sample_table[name_column])}
+        return {sample: i for i, sample in enumerate(self.sample_table[name_column])}
 
     @property
     def sample_table(self):

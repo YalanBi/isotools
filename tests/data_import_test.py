@@ -19,8 +19,8 @@ def test_import_gff():
 def test_import_bam():
     isoseq = Transcriptome.from_reference('tests/data/example_ref_isotools.pkl')
     assert isoseq.n_transcripts == 0, 'there should not be any transcripts'
-    for sa in ('CTL', 'VPA'):
-        isoseq.add_sample_from_bam(f'tests/data/example_1_{sa}.bam', sample_name=sa, group=sa, platform='SequelII')
+    for sample in ('CTL', 'VPA'):
+        isoseq.add_sample_from_bam(f'tests/data/example_1_{sample}.bam', sample_name=sample, group=sample, platform='SequelII')
     # assert isoseq.n_transcripts == 185, 'we expect 185 transcripts'
     isoseq.add_qc_metrics('tests/data/example.fa')
     isoseq.add_orf_prediction('tests/data/example.fa')
@@ -53,9 +53,9 @@ def test_import_csv_reconstruct():  # reconstruct gene structure from scratch
     logger.info('remapped %s transcripts', sum(len(d) for d in id_map))
     assert set(isoseq.samples) == set(isoseq_csv.samples), 'discrepant samples after csv import'
     stab1, stab2 = isoseq.sample_table.set_index('name'), isoseq_csv.sample_table.set_index('name')
-    for sa in isoseq.samples:
-        assert stab1.loc[sa, 'group'] == stab2.loc[sa, 'group'], 'wrong group after csv import for sample %s' % sa
-        assert stab1.loc[sa, 'nonchimeric_reads'] == stab2.loc[sa, 'nonchimeric_reads'], 'wrong number of reads after csv import for sample %s' % sa
+    for sample in isoseq.samples:
+        assert stab1.loc[sample, 'group'] == stab2.loc[sample, 'group'], 'wrong group after csv import for sample %s' % sample
+        assert stab1.loc[sample, 'nonchimeric_reads'] == stab2.loc[sample, 'nonchimeric_reads'], 'wrong number of reads after csv import for sample %s' % sample
 
     discrepancy = False
     for gene in isoseq.iter_genes(query='EXPRESSED'):

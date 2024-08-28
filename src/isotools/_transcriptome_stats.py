@@ -139,19 +139,19 @@ def _check_groups(transcriptome, groups, n_groups=2):
     if isinstance(groups, dict):
         groupnames = list(groups)
         groups = list(groups.values())
-    elif all(isinstance(gn, str) and gn in transcriptome.groups() for gn in groups):
+    elif all(isinstance(groupname, str) and groupname in transcriptome.groups() for groupname in groups):
         groupnames = list(groups)
         groups = [transcriptome.groups()[gn] for gn in groupnames]
-    elif all(isinstance(grp, list) for grp in groups):
-        groupnames = ['group{i+1}' for i in range(len(groups))]
+    elif all(isinstance(group, list) for group in groups):
+        groupnames = [f'group{i+1}' for i in range(len(groups))]
     else:
         raise ValueError('groups not found in dataset (samples must be a str, list or dict)')
-    notfound = [sa for grp in groups for sa in grp if sa not in transcriptome.samples]
+    notfound = [sample for group in groups for sample in group if sample not in transcriptome.samples]
     if notfound:
         raise ValueError(f"Cannot find the following samples: {notfound}")
-    assert all((gn1 not in gn2 for gn1, gn2 in itertools.permutations(groupnames, 2))), 'group names must not be contained in other group names'
-    sa_idx = {sa: idx for sa, idx in transcriptome._get_sample_idx().items()}
-    grp_idx = [[sa_idx[sa] for sa in grp] for grp in groups]
+    assert all((groupname1 not in groupname2 for groupname1, groupname2 in itertools.permutations(groupnames, 2))), 'group names must not be contained in other group names'
+    sample_idx = {sample: idx for sample, idx in transcriptome._get_sample_idx().items()}
+    grp_idx = [[sample_idx[sample] for sample in group] for group in groups]
     return groupnames, groups, grp_idx
 
 
@@ -172,8 +172,8 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     :param kwargs: Additional keyword arguments are passed to iter_genes.'''
 
     noORF = (None, None, {'NMD': True})
-    groupnames, groups, grp_idx = _check_groups(self, groups)
-    sidx = np.array(grp_idx[0] + grp_idx[1])
+    groupnames, groups, group_idx = _check_groups(self, groups)
+    sidx = np.array(group_idx[0] + group_idx[1])
 
     if isinstance(test, str):
         if test == 'auto':
@@ -216,8 +216,8 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
             alt_fraction = junction_cov[sidx].sum() / total_cov[sidx].sum()
             if alt_fraction < min_alt_fraction or alt_fraction > 1 - min_alt_fraction:
                 continue
-            x = [junction_cov[grp] for grp in grp_idx]
-            n = [total_cov[grp] for grp in grp_idx]
+            x = [junction_cov[grp] for grp in group_idx]
+            n = [total_cov[grp] for grp in group_idx]
             if sum((ni >= min_n).sum() for ni in n[:2]) < min_sa:
                 continue
             pval, params = test(x[:2], n[:2])
@@ -242,8 +242,8 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
                                              params, params_other,
                                              (val for lists in zip(x, n) for pair in zip(*lists) for val in pair))))
     colnames = ['gene', 'gene_id', 'chrom', 'strand', 'start', 'end', 'splice_type', 'novel', 'pvalue', 'trA', 'trB', 'nmdA', 'nmdB']
-    colnames += [gn + part for gn in groupnames[:2] + ['total'] + groupnames[2:] for part in ['_PSI', '_disp']]
-    colnames += [f'{sa}_{gn}_{w}' for gn, grp in zip(groupnames, groups) for sa in grp for w in ['in_cov', 'total_cov']]
+    colnames += [groupname + part for groupname in groupnames[:2] + ['total'] + groupnames[2:] for part in ['_PSI', '_disp']]
+    colnames += [f'{sample}_{groupname}_{w}' for groupname, group in zip(groupnames, groups) for sample in group for w in ['in_cov', 'total_cov']]
     df = pd.DataFrame(res, columns=colnames)
     try:
         mask = np.isfinite(df['pvalue'])
@@ -297,8 +297,8 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
     if samples is None:
         samples = self.samples
     assert all(s in self.samples for s in samples), 'not all specified samples found'
-    sa_dict = {sa: i for i, sa in enumerate(self.samples)}
-    sidx = np.array([sa_dict[sa] for sa in samples])
+    sample_dict = {sample: i for i, sample in enumerate(self.samples)}
+    sidx = np.array([sample_dict[sample] for sample in samples])
 
     assert 0 < min_alt_fraction < .5, 'min_alt_fraction must be > 0 and < 0.5'
     for gene in self.iter_genes(**kwargs):
@@ -332,7 +332,7 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
                     novel = (start, end) not in known.get(splice_type, set())
                 bubbles.append([gene.id, gene.chrom, start, end, splice_type, novel] + list(junction_cov) + list(total_cov))
     return pd.DataFrame(bubbles, columns=['gene', 'chr', 'start', 'end', 'splice_type', 'novel'] +
-                        [f'{sa}_{what}' for what in ['in_cov', 'total_cov'] for sa in samples])
+                        [f'{sample}_{what}' for what in ['in_cov', 'total_cov'] for sample in samples])
 
 # summary tables (can be used as input to plot_bar / plot_dist)
 
@@ -373,8 +373,8 @@ def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, 
     #    groups={gn:[gi[r] for r in gr] for gn,gr in groups.items()}
     current = None
     if groups is not None:
-        sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
-        groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}
+        sample_idx = {sample: i for i, sample in enumerate(self.samples)}  # idx
+        groups = {groupname: [sample_idx[sample] for sample in group] for groupname, group in groups.items()}
 
     for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
         if gene != current:
@@ -555,8 +555,8 @@ def transcripts_per_gene_hist(self, groups=None, add_reference=False, bins=49, x
         group_names = self.samples
     else:
         group_names = groups.keys()
-        sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
-        groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}
+        sidx = {sample: i for i, sample in enumerate(self.samples)}  # idx
+        groups = {groupname: [sidx[sample] for sample in group] for groupname, group in groups.items()}
     n_sa = len(group_names)
     for gene, transcript_id, _ in self.iter_transcripts(**tr_filter):
         if gene != current:
@@ -705,8 +705,8 @@ def direct_repeat_hist(self, groups=None, bins=10, x_range=(0, 10), weight_by_co
             cov_df[cov_df > 0] = 1
     if isinstance(bins, int):
         bins = np.linspace(x_range[0] - .5, x_range[1] - .5, bins + 1)
-    counts = pd.DataFrame({f'{sa} {cat}': np.histogram([val[0] for val in rl_list], weights=rl_cov[cat][sa], bins=bins)[
-                          0] for cat, rl_list in rl.items() for sa in (self.samples if groups is None else groups)})
+    counts = pd.DataFrame({f'{sample} {cat}': np.histogram([val[0] for val in rl_list], weights=rl_cov[cat][sample], bins=bins)[
+                          0] for cat, rl_list in rl.items() for sample in (self.samples if groups is None else groups)})
 
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     params = dict(title='direct repeat length', xlabel='length of direct repeats at splice junctons', ylabel='# transcripts')
@@ -741,10 +741,10 @@ def rarefaction(self, groups=None, fractions=20, min_coverage=2, tr_filter={}):
     total = dict(self.sample_table.set_index('name').nonchimeric_reads)
     if groups is not None:
         cov = pd.DataFrame({grn: cov[grp].sum(1) for grn, grp in groups.items()})
-        total = {grn: sum(n for sa, n in total.items() if sa in grp) for grn, grp in groups.items()}
+        total = {groupname: sum(n for sample, n in total.items() if sample in group) for groupname, group in groups.items()}
     curves = {}
-    for sa in cov:
-        curves[sa] = [(np.random.binomial(n=cov[sa], p=th) >= min_coverage).sum() for th in fractions]
+    for sample in cov:
+        curves[sample] = [(np.random.binomial(n=cov[sample], p=th) >= min_coverage).sum() for th in fractions]
     return pd.DataFrame(curves, index=fractions), total
 
 

@@ -54,9 +54,9 @@ class SegmentGraph():
                         self._graph[node_idx].pre[i] = node_idx - 1
                 # real junctions
                 if j < len(transcript) - 1:
-                    e2 = transcript[j + 1]
-                    self._graph[end_idx[exon[1]]].suc[i] = start_idx[e2[0]]
-                    self._graph[start_idx[e2[0]]].pre[i] = end_idx[exon[1]]
+                    exon2 = transcript[j + 1]
+                    self._graph[end_idx[exon[1]]].suc[i] = start_idx[exon2[0]]
+                    self._graph[start_idx[exon2[0]]].pre[i] = end_idx[exon[1]]
 
     def _restore(self, i: int) -> list:  # mainly for testing
         ''' Restore the i_{th} transcript from the Segment graph by traversing from 5' to 3'
@@ -209,22 +209,22 @@ class SegmentGraph():
             j += 1
         return transcript
 
-    def _is_same_exon(self, tr_nr, j1, j2):
-        '''Tests if nodes j1 and j2 belong to same exon in transcript tr_nr.'''
+    def _is_same_exon(self, transcript_number, j1, j2):
+        '''Tests if nodes j1 and j2 belong to same exon in transcript transcript_number.'''
         for j in range(j1, j2):
-            if tr_nr not in self[j].suc or self[j].suc[tr_nr] > j + 1 or self[j].end != self[j + 1].start:
+            if transcript_number not in self[j].suc or self[j].suc[transcript_number] > j + 1 or self[j].end != self[j + 1].start:
                 return False
         return True
 
-    def _count_introns(self, tr_nr, j1, j2):
+    def _count_introns(self, transcript_number, j1, j2):
         '''Counts the number of junctions between j1 and j2.'''
-        logger.debug('counting introns of transcript %i between nodes %i and %i', tr_nr, j1, j2)
+        logger.debug('counting introns of transcript %i between nodes %i and %i', transcript_number, j1, j2)
         delta = 0
         if j1 == j2:
             return 0
-        assert tr_nr in self[j1].suc, f'transcript {tr_nr} does not contain node {j1}'
+        assert transcript_number in self[j1].suc, f'transcript {transcript_number} does not contain node {j1}'
         while j1 < j2:
-            j_next = self[j1].suc[tr_nr]
+            j_next = self[j1].suc[transcript_number]
             if j_next > j1 + 1 or self[j1].end != self[j1 + 1].start:
                 delta += 1
             j1 = j_next
@@ -521,11 +521,11 @@ class SegmentGraph():
             splice_junction_ends.setdefault(ss[1], []).append(i)
 
         # check exon ends
-        for sjs, idx in sorted(splice_junction_starts.items()):
+        for splice_junction_start, idx in sorted(splice_junction_starts.items()):
             try:
-                while sjs > n.end:
+                while splice_junction_start > n.end:
                     n = next(nodes)
-                if n.end == sjs and any(self[s].start > n.end for s in n.suc.values()):
+                if n.end == splice_junction_start and any(self[s].start > n.end for s in n.suc.values()):
                     for i in idx:
                         sites[i * 2] = True
             except StopIteration:
@@ -533,11 +533,11 @@ class SegmentGraph():
         nodes = iter(self)
         n = next(nodes)
         # check exon starts
-        for sje, idx in sorted(splice_junction_ends.items()):
+        for splice_junction_end, idx in sorted(splice_junction_ends.items()):
             try:
-                while sje > n.start:
+                while splice_junction_end > n.start:
                     n = next(nodes)
-                if n.start == sje and any(self[p].end < n.start for p in n.pre.values()):
+                if n.start == splice_junction_end and any(self[p].end < n.start for p in n.pre.values()):
                     for i in idx:
                         sites[i * 2 + 1] = True
             except StopIteration:
@@ -553,28 +553,28 @@ class SegmentGraph():
 
         ol = 0
         j = 0
-        tr_ol = [0 for _ in self._pas]
+        transcript_overlap = [0 for _ in self._pas]
         for e in exons:
             while self[j].end < e[0]:  # no overlap, go on
                 j += 1
                 if j == len(self):
-                    return ol, tr_ol
+                    return ol, transcript_overlap
             while self[j].start < e[1]:
                 i_end = min(e[1], self[j].end)
                 i_start = max(e[0], self[j].start)
                 ol += (i_end - i_start)
                 for transcript_id in self[j].suc.keys():
-                    tr_ol[transcript_id] += (i_end - i_start)
+                    transcript_overlap[transcript_id] += (i_end - i_start)
                 for transcript_id, pas in enumerate(self._pas):
                     if pas == j:
-                        tr_ol[transcript_id] += (i_end - i_start)
+                        transcript_overlap[transcript_id] += (i_end - i_start)
                 if self[j].end > e[1]:
                     break
                 j += 1
                 if j == len(self):
-                    return ol, tr_ol
+                    return ol, transcript_overlap
 
-        return ol, tr_ol
+        return ol, transcript_overlap
 
     def get_intron_support_matrix(self, exons):
         '''Check the intron support for the provided transcript w.r.t. transcripts from self.
@@ -609,18 +609,18 @@ class SegmentGraph():
             An entry is True iff the exon from "exons" is fully covered in the respective transcript of self.
             First and last exon are checked to overlap the first and last exon of the ref transcript but do not need to be fully covered'''
         esm = np.zeros((len(self._tss), len(exons)), bool)  # the intron support matrix
-        for tr_nr, tss in enumerate(self._tss):  # check overlap of first exon
+        for transcript_number, tss in enumerate(self._tss):  # check overlap of first exon
             for j in range(tss, len(self)):
                 if has_overlap(self[j], exons[0]):
-                    esm[tr_nr, 0] = True
-                elif self[j].suc.get(tr_nr, None) == j + 1 and j - 1 < len(self) and self[j].end == self[j + 1].start:
+                    esm[transcript_number, 0] = True
+                elif self[j].suc.get(transcript_number, None) == j + 1 and j - 1 < len(self) and self[j].end == self[j + 1].start:
                     continue
                 break
-        for tr_nr, pas in enumerate(self._pas):  # check overlap of last exon
+        for transcript_number, pas in enumerate(self._pas):  # check overlap of last exon
             for j in range(pas, -1, -1):
                 if has_overlap(self[j], exons[-1]):
-                    esm[tr_nr, -1] = True
-                elif self[j].pre.get(tr_nr, None) == j - 1 and j > 0 and self[j].start == self[j - 1].end:
+                    esm[transcript_number, -1] = True
+                elif self[j].pre.get(transcript_number, None) == j - 1 and j > 0 and self[j].start == self[j - 1].end:
                     continue
                 break
 
@@ -880,11 +880,11 @@ class SegmentGraph():
                         me_alt = alternative[0] - inB_sets[junction][0] - inB_sets[junction][1]
                         # there is at least one novel alternative transcript
                         if me_alt - me_alt_seen:
-                            # for ME we need to find (potentially more than one) node C where the alternatives rejoin
-                            # find node C for all me_alt
+                            # for ME we need to find (potentially more than one) node_C where the alternatives rejoin
+                            # find node_C for all me_alt
                             for transcript_id in me_alt:
                                 node_C_dict.setdefault(transcript_id, self._get_next_spliced(transcript_id, node_A.suc[transcript_id]))
-                                # transcript end in node_B, no node C
+                                # transcript end in node_B, no node_C
                                 if node_C_dict[transcript_id] is None:
                                     # those are not of interest for ME
                                     me_alt_seen.add(transcript_id)
@@ -1077,8 +1077,8 @@ class SpliceGraph():
     Nodes represent splice sites and are tuples of genomic positions and a "lower" flag.
     The "lower flag" is true, if the splice site is a genomic 5' end of an exon
     Nodes are kept sorted, so iteration over splicegraph returns all nodes in genomic order
-    Edges are assessed with SpliceGraph.pre(node, [tr_nr]) and SpliceGraph.suc(node, [tr_nr]) functions.
-    If no tr_nr is provided, a dict with all incoming/outgoing edges is returned'''
+    Edges are assessed with SpliceGraph.pre(node, [transcript_number]) and SpliceGraph.suc(node, [transcript_number]) functions.
+    If no transcript_number is provided, a dict with all incoming/outgoing edges is returned'''
     # @experimental
 
     def __init__(self, is_reverse, graph, fwd_starts, rev_starts):
@@ -1121,7 +1121,8 @@ class SpliceGraph():
 
     @experimental
     def add(self, exons) -> None:
-        '''Add one transcript to the existing graph.
+        '''
+        Add one transcript to the existing graph.
 
         :param exons: A list of exon tuples representing the transcript to add
         :type exons: list

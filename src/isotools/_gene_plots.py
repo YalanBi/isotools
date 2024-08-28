@@ -42,16 +42,16 @@ def get_index(samples, names):
     if not samples:
         return []
     if isinstance(names, list):
-        idx = {sa: i for i, sa in enumerate(names)}
+        idx = {sample: i for i, sample in enumerate(names)}
     else:
-        idx = {sa: i for i, sa in names.items()}
+        idx = {sample: i for i, sample in names.items()}
     try:
-        sidx = [idx[sa] for sa in samples]
+        sample_idx = [idx[sample] for sample in samples]
     except KeyError:
-        notfound = [sa for sa in samples if sa not in idx]
+        notfound = [sample for sample in samples if sample not in idx]
         logger.error('did not find the following samples: %s', ','.join(notfound))
         raise
-    return sidx
+    return sample_idx
 
 # sashimi plots
 

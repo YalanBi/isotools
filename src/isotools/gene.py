@@ -502,9 +502,9 @@ class Gene(Interval):
                         cov[i, j] = transcript['coverage'].get(samples[i], 0)
                 self.data['coverage'] = cov
                 return
-        for i, sa in enumerate(samples):
+        for i, sample in enumerate(samples):
             for j, transcript in enumerate(self.transcripts):
-                cov[i, j] = transcript['coverage'].get(sa, 0)
+                cov[i, j] = transcript['coverage'].get(sample, 0)
         self.data['coverage'] = cov
         self.data['segment_graph'] = None
 
@@ -671,13 +671,13 @@ class Gene(Interval):
 
     def filter_transcripts(self, query=None, min_coverage=None, max_coverage=None):
         if query:
-            tr_filter = self._transcriptome.filter['transcript']
+            transcript_filter = self._transcriptome.filter['transcript']
             # used_tags={tag for tag in re.findall(r'\b\w+\b', query) if tag not in BOOL_OP}
             query_fun, used_tags = _filter_function(query)
             msg = 'did not find the following filter rules: {}\nvalid rules are: {}'
-            assert all(f in tr_filter for f in used_tags), msg.format(
-                ', '.join(f for f in used_tags if f not in tr_filter), ', '.join(tr_filter))
-            tr_filter_fun = {tag: _filter_function(tag, tr_filter)[0] for tag in used_tags if tag in tr_filter}
+            assert all(f in transcript_filter for f in used_tags), msg.format(
+                ', '.join(f for f in used_tags if f not in transcript_filter), ', '.join(transcript_filter))
+            transcript_filter_fun = {tag: _filter_function(tag, transcript_filter)[0] for tag in used_tags if tag in transcript_filter}
         transcript_ids = []
         for i, transcript in enumerate(self.transcripts):
             if min_coverage and self.coverage[:, i].sum() < min_coverage:
@@ -685,7 +685,7 @@ class Gene(Interval):
             if max_coverage and self.coverage[:, i].sum() > max_coverage:
                 continue
             if query is None or query_fun(
-                    **{tag: f(gene=self, transcript_id=i, **transcript) for tag, f in tr_filter_fun.items()}):
+                    **{tag: f(gene=self, transcript_id=i, **transcript) for tag, f in transcript_filter_fun.items()}):
                 transcript_ids.append(i)
         return transcript_ids
 
@@ -877,11 +877,11 @@ class Gene(Interval):
         pas = {}
         strand = 1 if self.strand == '+' else -1
         for transcript in self.transcripts:
-            for sa in transcript['TSS']:
-                for pos, c in transcript['TSS'][sa].items():
+            for sample in transcript['TSS']:
+                for pos, c in transcript['TSS'][sample].items():
                     tss[pos] = tss.get(pos, 0)+c
-            for sa in transcript['PAS']:
-                for pos, c in transcript['PAS'][sa].items():
+            for sample in transcript['PAS']:
+                for pos, c in transcript['PAS'][sample].items():
                     pas[pos] = pas.get(pos, 0)+c
 
         tss_pos = [min(tss), max(tss)]
@@ -917,8 +917,8 @@ class Gene(Interval):
         for junction_pos, transcript_ids in first_junction.items():
             profile = {}
             for transcript_id in transcript_ids:
-                for sa_tss in self.transcripts[transcript_id]['TSS'].values():
-                    for pos, c in sa_tss.items():
+                for sample_tss in self.transcripts[transcript_id]['TSS'].values():
+                    for pos, c in sample_tss.items():
                         profile[pos] = profile.get(pos, 0) + c
             quantiles = get_quantiles(sorted(profile.items()), [search_range[0], .5, search_range[1]])
             # one/ several peaks within base range? -> quantify by next read_start
@@ -929,13 +929,13 @@ class Gene(Interval):
             for transcript_id in transcript_ids:
                 transcript = self.transcripts[transcript_id]
                 transcript['TSS_unified'] = {}
-                for sa, sa_tss in transcript['TSS'].items():
+                for sample, sample_tss in transcript['TSS'].items():
                     tss_unified = {}
-                    for pos, c in sa_tss.items():  # for each read start position, find closest peak
+                    for pos, c in sample_tss.items():  # for each read start position, find closest peak
                         next_peak = min((p for p in ol_peaks if cmp_dist(junction_pos, p, min_dist=3) == strand),
                                         default=pos, key=lambda x: abs(x-pos))
                         tss_unified[next_peak] = tss_unified.get(next_peak, 0)+c
-                    transcript['TSS_unified'][sa] = tss_unified
+                    transcript['TSS_unified'][sample] = tss_unified
         # same for PAS
         for junction_pos, transcript_ids in last_junction.items():
             profile = {}
@@ -952,20 +952,20 @@ class Gene(Interval):
             for transcript_id in transcript_ids:
                 transcript = self.transcripts[transcript_id]
                 transcript['PAS_unified'] = {}
-                for sa, sa_pas in transcript['PAS'].items():
+                for sample, sa_pas in transcript['PAS'].items():
                     pas_unified = {}
                     for pos, c in sa_pas.items():
                         next_peak = min((p for p in ol_peaks if cmp_dist(p, junction_pos, min_dist=3) == strand),
                                         default=pos, key=lambda x: abs(x-pos))
                         pas_unified[next_peak] = pas_unified.get(next_peak, 0)+c
-                    transcript['PAS_unified'][sa] = pas_unified
+                    transcript['PAS_unified'][sample] = pas_unified
         for transcript in self.transcripts:
             # find the most common tss/pas per transcript, and set the exon boundaries
             sum_tss = {}
             sum_pas = {}
             start = end = max_tss = max_pas = 0
-            for sa_tss in transcript['TSS_unified'].values():
-                for pos, cov in sa_tss.items():
+            for sample_tss in transcript['TSS_unified'].values():
+                for pos, cov in sample_tss.items():
                     sum_tss[pos] = sum_tss.get(pos, 0)+cov
             for pos, cov in sum_tss.items():
                 if cov > max_tss:

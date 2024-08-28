@@ -78,9 +78,9 @@ def main():
 
     illu_groups = {}
     if 'short_reads' in isoseq.infos:  # todo: make this optional/parameter --dont_use_short_reads
-        for grp, sa in groups.items():
-            if sa in isoseq.infos['short_reads']['name']:
-                i = pd.Index(isoseq.infos['short_reads']['name']).get_loc(sa)
+        for grp, sample in groups.items():
+            if sample in isoseq.infos['short_reads']['name']:
+                i = pd.Index(isoseq.infos['short_reads']['name']).get_loc(sample)
                 illu_groups.setdefault(grp, []).append(i)
         logger.debug('illumina sample group definition: %s\n%s', illu_groups, isoseq.infos["short_reads"])
 
