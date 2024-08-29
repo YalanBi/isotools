@@ -1124,16 +1124,16 @@ def import_ref_transcripts(fn, transcriptome, file_format, chromosomes=None, gen
         for gene in genes[chrom]:
             gene_id = gene.id
             transcript = transcripts.get(gene_id, {gene_id: {}})
-            for transcript_d, transcript_info in transcript.items():
-                transcript_info['transcript_id'] = transcript_d
+            for transcript_id, transcript_info in transcript.items():
+                transcript_info['transcript_id'] = transcript_id
                 try:
-                    transcript_info['exons'] = exons[transcript_d]
+                    transcript_info['exons'] = exons[transcript_id]
                 except KeyError:
                     # genes without exons get a single exons transcript
                     transcript_info['exons'] = [tuple(gene[:2])]
                 # add cds
-                if transcript_d in cds_start and transcript_d in cds_stop:
-                    transcript_info['CDS'] = (cds_start[transcript_d], cds_stop[transcript_d]) if cds_start[transcript_d] < cds_stop[transcript_d] else (cds_stop[transcript_d], cds_start[transcript_d])
+                if transcript_id in cds_start and transcript_id in cds_stop:
+                    transcript_info['CDS'] = (cds_start[transcript_id], cds_stop[transcript_id]) if cds_start[transcript_id] < cds_stop[transcript_id] else (cds_stop[transcript_id], cds_start[transcript_id])
                 gene.data['reference'].setdefault('transcripts', []).append(transcript_info)
             if short_exon_th is not None:
                 short_exons = {exon for transcript in gene.data['reference']['transcripts'] for exon in transcript['exons'] if exon[1] - exon[0] <= short_exon_th}
