@@ -4,6 +4,7 @@ import logging
 import re
 from intervaltree import IntervalTree  # , Interval
 import pandas as pd
+from typing import Optional
 from ._transcriptome_io import import_ref_transcripts
 from .gene import Gene
 from ._transcriptome_filter import DEFAULT_GENE_FILTER, DEFAULT_TRANSCRIPT_FILTER, DEFAULT_REF_TRANSCRIPT_FILTER, ANNOTATION_VOCABULARY, SPLICE_CATEGORY
@@ -23,13 +24,19 @@ class Transcriptome:
     '''
     # initialization and save/restore data
 
-    def __init__(self, **kwargs):
+    data: dict[str, IntervalTree[Gene]]
+    infos: dict
+    chimeric: dict
+    filter: dict
+    _idx: dict[str, Gene]
+
+    def __init__(self, data: Optional[dict[str, IntervalTree[Gene]]] = None, infos = dict(), chimeric = dict(), filter = dict()):
         '''Constructor method'''
-        if 'data' in kwargs:
-            self.data = kwargs['data']
-            self.infos = kwargs.get('infos', {})
-            self.chimeric = kwargs.get('chimeric', {})
-            self.filter = kwargs.get('filter', {})
+        if data is not None:
+            self.data = data
+            self.infos = infos
+            self.chimeric = chimeric
+            self.filter = filter
             assert 'reference_file' in self.infos
             self.make_index()
 
@@ -40,9 +47,8 @@ class Transcriptome:
         :param reference_file: Reference file in gff3 format or pickle file to restore previously imported annotation
         :type reference_file: str
         :param file_format: Specify the file format of the provided reference_file.
-            If set to "auto" the file type is infrered from the extension.
-        :param chromosome: If reference file is gtf/gff, restrict import on specified chromosomes
-        :param infer_transcrpts: If reference file is gtf, genes and transcripts are infered from "exon" entries, no specific transcript '''
+            If set to "auto" the file type is inferred from the extension.
+        :param chromosome: If reference file is gtf/gff, restrict import on specified chromosomes '''
 
         if file_format == 'auto':
             file_format = os.path.splitext(reference_file)[1].lstrip('.')
@@ -50,56 +56,54 @@ class Transcriptome:
                 file_format = os.path.splitext(reference_file[:-3])[1].lstrip('.')
         if file_format in ('gff', 'gff3', 'gtf'):
             logger.info('importing reference from %s file %s', file_format, reference_file)
-            tr = cls()
-            tr.chimeric = {}
-            tr.data = import_ref_transcripts(reference_file, tr, file_format,  **kwargs)
-            tr.infos = {'reference_file': reference_file, 'isotools_version': __version__}
-            tr.filter = {'gene': DEFAULT_GENE_FILTER.copy(),
+            transcriptome = cls()
+            transcriptome.chimeric = {}
+            transcriptome.data = import_ref_transcripts(reference_file, transcriptome, file_format,  **kwargs)
+            transcriptome.infos = {'reference_file': reference_file, 'isotools_version': __version__}
+            transcriptome.filter = {'gene': DEFAULT_GENE_FILTER.copy(),
                          'transcript': DEFAULT_TRANSCRIPT_FILTER.copy(),
                          'reference': DEFAULT_REF_TRANSCRIPT_FILTER.copy()}
             for subcat in ANNOTATION_VOCABULARY:
                 tag = '_'.join(re.findall(r'\b\w+\b', subcat)).upper()
                 if tag[0].isdigit():
                     tag = '_'+tag
-                tr.filter['transcript'][tag] = f'"{subcat}" in annotation[1]'
+                transcriptome.filter['transcript'][tag] = f'"{subcat}" in annotation[1]'
             for i, cat in enumerate(SPLICE_CATEGORY):
-                tr.filter['transcript'][cat] = f'annotation[0]=={i}'
+                transcriptome.filter['transcript'][cat] = f'annotation[0]=={i}'
 
         elif file_format == 'pkl':
             # warn if kwargs are specified: kwargs are ignored
             if kwargs:
                 logger.warning("The following parameters are ignored when loading reference from pkl: %s", ", ".join(kwargs))
-            tr = cls.load(reference_file)
-            if 'sample_table' in tr.infos:
+            transcriptome = cls.load(reference_file)
+            if 'sample_table' in transcriptome.infos:
                 logger.warning('the pickle file seems to contain sample information... extracting reference')
-                tr = tr._extract_reference()
+                transcriptome = transcriptome._extract_reference()
         else:
             raise ValueError('invalid file format %s of file %s' % (file_format, reference_file))
-        tr.make_index()
-        return tr
+        transcriptome.make_index()
+        return transcriptome
 
-    def save(self, pickle_file=None):
+    def save(self, pickle_file: str):
         '''Saves transcriptome information (including reference) in a pickle file.
 
         :param pickle_file: Filename to save data'''
-        if pickle_file is None:
-            pickle_file = self.infos['out_file_name']+'.isotools.pkl'  # key error if not set
         logger.info('saving transcriptome to %s', pickle_file)
         pickle.dump(self, open(pickle_file, 'wb'))
 
     @classmethod
-    def load(cls, pickle_file):
+    def load(cls, pickle_file: str):
         '''Restores transcriptome information from a pickle file.
 
         :param pickle_file: Filename to restore data'''
 
         logger.info('loading transcriptome from %s', pickle_file)
-        tr = pickle.load(open(pickle_file, 'rb'))
-        pickled_version = tr.infos.get('isotools_version', '<0.2.6')
+        transcriptome: Transcriptome = pickle.load(open(pickle_file, 'rb'))
+        pickled_version = transcriptome.infos.get('isotools_version', '<0.2.6')
         if pickled_version != __version__:
             logger.warning('This is isotools version %s, but data has been pickled with version %s, which may be incompatible', __version__, pickled_version)
-        tr.make_index()
-        return tr
+        transcriptome.make_index()
+        return transcriptome
 
     def save_reference(self, pickle_file=None):
         '''Saves the reference information of a transcriptome in a pickle file.
@@ -116,23 +120,24 @@ class Transcriptome:
             return self  # only reference info - assume that self.data only contains reference data
         # make a new transcriptome
         ref_info = {k: v for k, v in self.infos.items() if k in ['reference_file', 'isotools_version']}
-        ref_tr = type(self)(data={}, infos=ref_info, filter=self.filter)
+        ref_transcriptome = type(self)(data={}, infos=ref_info, filter=self.filter)
         # extract the reference genes and link them to the new ref_tr
         keep = {'ID', 'chr', 'strand', 'name', 'reference'}  # no coverage, segment_graph, transcripts
         for chrom, tree in self.data.items():
-            ref_tr.data[chrom] = IntervalTree(Gene(g.start, g.end, {k: v
-                                              for k, v in g.data.items() if k in keep}, ref_tr) for g in tree if g.is_annotated)
-        ref_tr.make_index()
-        return ref_tr
+            ref_transcriptome.data[chrom] = IntervalTree(Gene(gene.start, gene.end, {k: v
+                                                for k, v in gene.data.items() if k in keep}, ref_transcriptome)
+                                                for gene in tree if gene.is_annotated)
+        ref_transcriptome.make_index()
+        return ref_transcriptome
 
     def make_index(self):
         '''Updates the index of gene names and ids (e.g. used by the the [] operator).'''
         idx = dict()
-        for g in self:
-            if g.id in idx:  # at least id should be unique - maybe raise exception?
-                logger.warning('%s seems to be ambigous: %s vs %s', g.id, str(idx[g.id]), str(g))
-            idx[g.name] = g
-            idx[g.id] = g
+        for gene in self:
+            if gene.id in idx:  # at least id should be unique - maybe raise exception?
+                logger.warning('%s seems to be ambigous: %s vs %s', gene.id, str(idx[gene.id]), str(gene))
+            idx[gene.name] = gene
+            idx[gene.id] = gene
         self._idx = idx
 
     # basic user level functionality
@@ -167,7 +172,7 @@ class Transcriptome:
 
     def _get_sample_idx(self, name_column='name'):
         'a dict with group names as keys and index lists as values'
-        return {sa: i for i, sa in enumerate(self.sample_table[name_column])}
+        return {sample: i for i, sample in enumerate(self.sample_table[name_column])}
 
     @property
     def sample_table(self):
@@ -196,7 +201,7 @@ class Transcriptome:
         '''The total number of transcripts isoforms.'''
         if self.data is None:
             return 0
-        return sum(g.n_transcripts for g in self)
+        return sum(gene.n_transcripts for gene in self)
 
     @property
     def n_genes(self) -> int:

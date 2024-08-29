@@ -10,6 +10,7 @@ import itertools
 
 # from .decorators import deprecated, debug, experimental
 from ._utils import _filter_function
+from .splice_graph import SegmentGraph
 
 logger = logging.getLogger('isotools')
 
@@ -138,19 +139,19 @@ def _check_groups(transcriptome, groups, n_groups=2):
     if isinstance(groups, dict):
         groupnames = list(groups)
         groups = list(groups.values())
-    elif all(isinstance(gn, str) and gn in transcriptome.groups() for gn in groups):
+    elif all(isinstance(groupname, str) and groupname in transcriptome.groups() for groupname in groups):
         groupnames = list(groups)
         groups = [transcriptome.groups()[gn] for gn in groupnames]
-    elif all(isinstance(grp, list) for grp in groups):
-        groupnames = ['group{i+1}' for i in range(len(groups))]
+    elif all(isinstance(group, list) for group in groups):
+        groupnames = [f'group{i+1}' for i in range(len(groups))]
     else:
         raise ValueError('groups not found in dataset (samples must be a str, list or dict)')
-    notfound = [sa for grp in groups for sa in grp if sa not in transcriptome.samples]
+    notfound = [sample for group in groups for sample in group if sample not in transcriptome.samples]
     if notfound:
         raise ValueError(f"Cannot find the following samples: {notfound}")
-    assert all((gn1 not in gn2 for gn1, gn2 in itertools.permutations(groupnames, 2))), 'group names must not be contained in other group names'
-    sa_idx = {sa: idx for sa, idx in transcriptome._get_sample_idx().items()}
-    grp_idx = [[sa_idx[sa] for sa in grp] for grp in groups]
+    assert all((groupname1 not in groupname2 for groupname1, groupname2 in itertools.permutations(groupnames, 2))), 'group names must not be contained in other group names'
+    sample_idx = {sample: idx for sample, idx in transcriptome._get_sample_idx().items()}
+    grp_idx = [[sample_idx[sample] for sample in group] for group in groups]
     return groupnames, groups, grp_idx
 
 
@@ -171,12 +172,12 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     :param kwargs: Additional keyword arguments are passed to iter_genes.'''
 
     noORF = (None, None, {'NMD': True})
-    groupnames, groups, grp_idx = _check_groups(self, groups)
-    sidx = np.array(grp_idx[0] + grp_idx[1])
+    groupnames, groups, group_idx = _check_groups(self, groups)
+    sidx = np.array(group_idx[0] + group_idx[1])
 
     if isinstance(test, str):
         if test == 'auto':
-            test = 'betabinom_lr' if min(len(g) for g in groups[:2]) > 1 else 'proportions'
+            test = 'betabinom_lr' if min(len(group) for group in groups[:2]) > 1 else 'proportions'
         test_name = test
         try:
             test = TESTS[test]
@@ -188,42 +189,42 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     logger.info('testing differential splicing for %s using %s test', ' vs '.join(f'{groupnames[i]} ({len(groups[i])})' for i in range(2)), test_name)
 
     if min_sa < 1:
-        min_sa *= sum(len(gr) for gr in groups[:2])
+        min_sa *= sum(len(group) for group in groups[:2])
     res = []
-    for g in self.iter_genes(**kwargs):
-        if g.coverage[sidx, :].sum() < min_total:
+    for gene in self.iter_genes(**kwargs):
+        if gene.coverage[sidx, :].sum() < min_total:
             continue
         known = {}  # check for known events
-        if g.is_annotated and g.n_transcripts:
-            sg = g.ref_segment_graph
+        if gene.is_annotated and gene.n_transcripts:
+            sg = gene.ref_segment_graph
             # find annotated alternatives for gene (e.g. known events)
             for _, _, nX, nY, splice_type in sg.find_splice_bubbles(types=types):
                 if splice_type in ("TSS", "PAS"):
-                    if (splice_type == "TSS") == (g.strand == "+"):
+                    if (splice_type == "TSS") == (gene.strand == "+"):
                         known.setdefault(splice_type, set()).add((sg[nX].end))
                     else:
                         known.setdefault(splice_type, set()).add((sg[nY].start))
                 else:
                     known.setdefault(splice_type, set()).add((sg[nX].end, sg[nY].start))
-        sg = g.segment_graph
+        sg = gene.segment_graph
         for setA, setB, nX, nY, splice_type in sg.find_splice_bubbles(types=types):
-            junction_cov = g.coverage[:, setB].sum(1)
-            total_cov = g.coverage[:, setA].sum(1) + junction_cov
+            junction_cov = gene.coverage[:, setB].sum(1)
+            total_cov = gene.coverage[:, setA].sum(1) + junction_cov
             if total_cov[sidx].sum() < min_total:
                 continue
 
             alt_fraction = junction_cov[sidx].sum() / total_cov[sidx].sum()
             if alt_fraction < min_alt_fraction or alt_fraction > 1 - min_alt_fraction:
                 continue
-            x = [junction_cov[grp] for grp in grp_idx]
-            n = [total_cov[grp] for grp in grp_idx]
+            x = [junction_cov[grp] for grp in group_idx]
+            n = [total_cov[grp] for grp in group_idx]
             if sum((ni >= min_n).sum() for ni in n[:2]) < min_sa:
                 continue
             pval, params = test(x[:2], n[:2])
             params_other = tuple(v for xi, ni in zip(x[2:], n[2:]) for v in betabinom_ml(xi, ni)[1])
             if splice_type in ['TSS', 'PAS']:
                 start, end = sg[nX].start, sg[nY].end
-                if (splice_type == "TSS") == (g.strand == "+"):
+                if (splice_type == "TSS") == (gene.strand == "+"):
                     novel = end not in known.get(splice_type, set())
                 else:
                     novel = start not in known.get(splice_type, set())
@@ -231,18 +232,18 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
                 start, end = sg[nX].end, sg[nY].start
                 novel = (start, end) not in known.get(splice_type, set())
 
-            nmdA = sum(g.coverage[np.ix_(sidx, [trid])].sum(None)
-                       for trid in setA if g.transcripts[trid].get('ORF', noORF)[2]['NMD'])/g.coverage[np.ix_(sidx, setA)].sum(None)
-            nmdB = sum(g.coverage[np.ix_(sidx, [trid])].sum(None)
-                       for trid in setB if g.transcripts[trid].get('ORF', noORF)[2]['NMD'])/g.coverage[np.ix_(sidx, setB)].sum(None)
-            res.append(tuple(itertools.chain((g.name, g.id, g.chrom, g.strand, start, end, splice_type, novel, pval,
-                                             sorted(setA, key=lambda x: -g.coverage[np.ix_(sidx, [x])].sum(0)),
-                                             sorted(setB, key=lambda x: -g.coverage[np.ix_(sidx, [x])].sum(0)), nmdA, nmdB),
+            nmdA = sum(gene.coverage[np.ix_(sidx, [transcript_id])].sum(None)
+                       for transcript_id in setA if gene.transcripts[transcript_id].get('ORF', noORF)[2]['NMD'])/gene.coverage[np.ix_(sidx, setA)].sum(None)
+            nmdB = sum(gene.coverage[np.ix_(sidx, [transcript_id])].sum(None)
+                       for transcript_id in setB if gene.transcripts[transcript_id].get('ORF', noORF)[2]['NMD'])/gene.coverage[np.ix_(sidx, setB)].sum(None)
+            res.append(tuple(itertools.chain((gene.name, gene.id, gene.chrom, gene.strand, start, end, splice_type, novel, pval,
+                                             sorted(setA, key=lambda x: -gene.coverage[np.ix_(sidx, [x])].sum(0)),
+                                             sorted(setB, key=lambda x: -gene.coverage[np.ix_(sidx, [x])].sum(0)), nmdA, nmdB),
                                              params, params_other,
                                              (val for lists in zip(x, n) for pair in zip(*lists) for val in pair))))
     colnames = ['gene', 'gene_id', 'chrom', 'strand', 'start', 'end', 'splice_type', 'novel', 'pvalue', 'trA', 'trB', 'nmdA', 'nmdB']
-    colnames += [gn + part for gn in groupnames[:2] + ['total'] + groupnames[2:] for part in ['_PSI', '_disp']]
-    colnames += [f'{sa}_{gn}_{w}' for gn, grp in zip(groupnames, groups) for sa in grp for w in ['in_cov', 'total_cov']]
+    colnames += [groupname + part for groupname in groupnames[:2] + ['total'] + groupnames[2:] for part in ['_PSI', '_disp']]
+    colnames += [f'{sample}_{groupname}_{w}' for groupname, group in zip(groupnames, groups) for sample in group for w in ['in_cov', 'total_cov']]
     df = pd.DataFrame(res, columns=colnames)
     try:
         mask = np.isfinite(df['pvalue'])
@@ -269,7 +270,8 @@ def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', **kw
     groupnames, groups, grp_idx = _check_groups(self, groups)
     logger.info('testing differential isoform expression (DIE) for %s.', ' vs '.join(f'{groupnames[i]} ({len(groups[i])})' for i in range(2)))
 
-    result = [(g.id, g.name, g.chrom, g.strand, g.start, g.end)+g.die_test(grp_idx, min_cov, n_isoforms) for g in self.iter_genes(**kwargs)]
+    result = [(gene.id, gene.name, gene.chrom, gene.strand, gene.start, gene.end) +
+              gene.die_test(grp_idx, min_cov, n_isoforms) for gene in self.iter_genes(**kwargs)]
     result = pd.DataFrame(result, columns=['gene_id', 'gene_name', 'chrom', 'strand', 'start', 'end', 'pvalue', 'deltaPI', 'transcript_ids'])
     mask = np.isfinite(result['pvalue'])
     padj = np.empty(mask.shape)
@@ -295,41 +297,42 @@ def alternative_splicing_events(self, min_total=100, min_alt_fraction=.1, sample
     if samples is None:
         samples = self.samples
     assert all(s in self.samples for s in samples), 'not all specified samples found'
-    sa_dict = {sa: i for i, sa in enumerate(self.samples)}
-    sidx = np.array([sa_dict[sa] for sa in samples])
+    sample_dict = {sample: i for i, sample in enumerate(self.samples)}
+    sidx = np.array([sample_dict[sample] for sample in samples])
 
     assert 0 < min_alt_fraction < .5, 'min_alt_fraction must be > 0 and < 0.5'
-    for g in self.iter_genes(**kwargs):
-        if g.coverage[sidx, :].sum() < min_total:
+    for gene in self.iter_genes(**kwargs):
+        if gene.coverage[sidx, :].sum() < min_total:
             continue
         known = {}  # check for known events
-        if g.is_annotated and g.n_transcripts:
-            sg = g.ref_segment_graph
-            for _, _, nX, nY, splice_type in sg.find_splice_bubbles():  # find annotated alternatives (known)
+        if gene.is_annotated and gene.n_transcripts:
+            ref_seg_graph: SegmentGraph = gene.ref_segment_graph
+            # find annotated alternatives (known)
+            for _, _, nX, nY, splice_type in ref_seg_graph.find_splice_bubbles():
                 if splice_type in ("TSS", "PAS"):
-                    if (splice_type == "TSS") == (g.strand == "+"):
-                        known.setdefault(splice_type, set()).add((sg[nX].end))
+                    if (splice_type == "TSS") == (gene.strand == "+"):
+                        known.setdefault(splice_type, set()).add((ref_seg_graph[nX].end))
                     else:
-                        known.setdefault(splice_type, set()).add((sg[nY].start))
+                        known.setdefault(splice_type, set()).add((ref_seg_graph[nY].start))
                 else:
-                    known.setdefault(splice_type, set()).add((sg[nX].end, sg[nY].start))
-        sg = g.segment_graph
-        for setA, setB, nX, nY, splice_type in sg.find_splice_bubbles():
-            junction_cov = g.coverage[np.ix_(sidx, setA)].sum(1)
-            total_cov = g.coverage[np.ix_(sidx, setB)].sum(1) + junction_cov
+                    known.setdefault(splice_type, set()).add((ref_seg_graph[nX].end, ref_seg_graph[nY].start))
+        seg_graph: SegmentGraph = gene.segment_graph
+        for setA, setB, nX, nY, splice_type in seg_graph.find_splice_bubbles():
+            junction_cov = gene.coverage[np.ix_(sidx, setA)].sum(1)
+            total_cov = gene.coverage[np.ix_(sidx, setB)].sum(1) + junction_cov
             if total_cov.sum() >= min_total and min_alt_fraction < junction_cov.sum() / total_cov.sum() < 1 - min_alt_fraction:
                 if splice_type in ['TSS', 'PAS']:
-                    start, end = sg[nX].start, sg[nY].end
-                    if (splice_type == "TSS") == (g.strand == "+"):
+                    start, end = seg_graph[nX].start, seg_graph[nY].end
+                    if (splice_type == "TSS") == (gene.strand == "+"):
                         novel = end not in known.get(splice_type, set())
                     else:
                         novel = start not in known.get(splice_type, set())
                 else:
-                    start, end = sg[nX].end, sg[nY].start
+                    start, end = seg_graph[nX].end, seg_graph[nY].start
                     novel = (start, end) not in known.get(splice_type, set())
-                bubbles.append([g.id, g.chrom, start, end, splice_type, novel] + list(junction_cov) + list(total_cov))
+                bubbles.append([gene.id, gene.chrom, start, end, splice_type, novel] + list(junction_cov) + list(total_cov))
     return pd.DataFrame(bubbles, columns=['gene', 'chr', 'start', 'end', 'splice_type', 'novel'] +
-                        [f'{sa}_{what}' for what in ['in_cov', 'total_cov'] for sa in samples])
+                        [f'{sample}_{what}' for what in ['in_cov', 'total_cov'] for sample in samples])
 
 # summary tables (can be used as input to plot_bar / plot_dist)
 
@@ -361,7 +364,7 @@ def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, 
 
     :param groups: A dict {group_name:[sample_name_list]} specifying sample groups. If omitted, the samples are analyzed individually.
     :param weight_by_coverage: If True, each transcript is weighted by the coverage.
-    :param min_coverage: Threshold to ignore poorly covered transcripts. This parameter gets applied for each sample group seperately.
+    :param min_coverage: Threshold to ignore poorly covered transcripts. This parameter gets applied for each sample group separately.
     :param tr_filter: Filter dict, that is passed to self.iter_transcripts().
     :return: Table with numbers of novel alternative splicing events, and suggested parameters for isotools.plots.plot_bar().'''
     weights = dict()
@@ -370,22 +373,22 @@ def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, 
     #    groups={gn:[gi[r] for r in gr] for gn,gr in groups.items()}
     current = None
     if groups is not None:
-        sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
-        groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}
+        sample_idx = {sample: i for i, sample in enumerate(self.samples)}  # idx
+        groups = {groupname: [sample_idx[sample] for sample in group] for groupname, group in groups.items()}
 
-    for g, trid, tr in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            w = g.coverage.copy() if groups is None else np.array([g.coverage[grp, :].sum(0) for grp in groups.values()])
+    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            w = gene.coverage.copy() if groups is None else np.array([gene.coverage[grp, :].sum(0) for grp in groups.values()])
             w[w < min_coverage] = 0
             if not weight_by_coverage:
                 w[w > 0] = 1
-        if 'annotation' not in tr or tr['annotation'] is None:
-            weights['unknown'] = weights.get('unknown', np.zeros(w.shape[0])) + w[:, trid]
+        if 'annotation' not in transcript or transcript['annotation'] is None:
+            weights['unknown'] = weights.get('unknown', np.zeros(w.shape[0])) + w[:, transcript_id]
         else:
-            for stype in tr['annotation'][1]:
-                weights[stype] = weights.get(stype, np.zeros(w.shape[0])) + w[:, trid]
-        weights['total'] = weights.get('total', np.zeros(w.shape[0])) + w[:, trid]
+            for stype in transcript['annotation'][1]:
+                weights[stype] = weights.get(stype, np.zeros(w.shape[0])) + w[:, transcript_id]
+        weights['total'] = weights.get('total', np.zeros(w.shape[0])) + w[:, transcript_id]
 
     df = pd.DataFrame(weights, index=self.samples if groups is None else groups.keys()).T
     df = df.reindex(df.mean(1).sort_values(ascending=False).index, axis=0)  # sort by row mean
@@ -421,23 +424,23 @@ def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_cove
     assert all(t in self.filter['transcript'] for t in tags), '"Tags" contains invalid tags'
     filterfun = {tag: _filter_function(tag, self.filter['transcript'])[0] for tag in tags}
     if groups is not None:
-        sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
-        groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}
+        sample_indices = {sample: i for i, sample in enumerate(self.samples)}  # idx
+        groups = {group_name: [sample_indices[sample] for sample in sample_group] for group_name, sample_group in groups.items()}
     current = None
-    for g, trid, tr in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            w = g.coverage.copy() if groups is None else np.array([g.coverage[grp, :].sum(0) for grp in groups.values()])
-            w[w < min_coverage] = 0
+    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            weight = gene.coverage.copy() if groups is None else np.array([gene.coverage[group, :].sum(0) for group in groups.values()])
+            weight[weight < min_coverage] = 0
             if not weight_by_coverage:
-                w[w > 0] = 1
-        # relevant_filter=[f for f in tr['filter'] if  consider is None or f in consider]
-        relevant_filter = [tag for tag in tags if filterfun[tag](g=g, trid=trid, **tr)]
-        for f in relevant_filter:
-            weights[f] = weights.get(f, np.zeros(w.shape[0])) + w[:, trid]
+                weight[weight > 0] = 1
+        # relevant_filter=[filter for filter in transcript['filter'] if  consider is None or filter in consider]
+        relevant_filter = [tag for tag in tags if filterfun[tag](gene=gene, transcript_id=transcript_id, **transcript)]
+        for filter in relevant_filter:
+            weights[filter] = weights.get(filter, np.zeros(weight.shape[0])) + weight[:, transcript_id]
         if not relevant_filter:
-            weights['PASS'] = weights.get('PASS', np.zeros(w.shape[0])) + w[:, trid]
-        weights['total'] = weights.get('total', np.zeros(w.shape[0])) + w[:, trid]
+            weights['PASS'] = weights.get('PASS', np.zeros(weight.shape[0])) + weight[:, transcript_id]
+        weights['total'] = weights.get('total', np.zeros(weight.shape[0])) + weight[:, transcript_id]
 
     df = pd.DataFrame(weights, index=self.samples if groups is None else groups.keys()).T
 
@@ -473,15 +476,15 @@ def transcript_length_hist(self=None, groups=None, add_reference=False, bins=50,
     trlen = []
     cov = []
     current = None
-    for g, trid, tr in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage
-        cov.append(current_cov[:, trid])
-        trlen.append(sum(e[1] - e[0] for e in tr['exons']) if use_alignment else tr['source_len'])  # source_len is not set in the current version
+    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage
+        cov.append(current_cov[:, transcript_id])
+        trlen.append(sum(e[1] - e[0] for e in transcript['exons']) if use_alignment else transcript['source_len'])  # source_len is not set in the current version
     cov = pd.DataFrame(cov, columns=self.samples)
     if groups is not None:
-        cov = pd.DataFrame({grn: cov[grp].sum(1) for grn, grp in groups.items()})
+        cov = pd.DataFrame({grn: cov[group].sum(1) for grn, group in groups.items()})
     if isinstance(bins, int):
         bins = np.linspace(x_range[0] - .5, x_range[1] - .5, bins + 1)
     cov[cov < min_coverage] = 0
@@ -489,7 +492,7 @@ def transcript_length_hist(self=None, groups=None, add_reference=False, bins=50,
         cov[cov > 0] = 1
     counts = pd.DataFrame({gn: np.histogram(trlen, weights=g_cov, bins=bins)[0] for gn, g_cov in cov.items()})
     if add_reference:
-        ref_len = [sum(e[1] - e[0] for e in tr['exons']) for _, _, tr in self.iter_ref_transcripts(**ref_filter)]
+        ref_len = [sum(exon[1] - exon[0] for exon in transcript['exons']) for _, _, transcript in self.iter_ref_transcripts(**ref_filter)]
         counts['reference'] = np.histogram(ref_len, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     params = dict(yscale='linear', title='transcript length', xlabel='transcript length [bp]', density=True)
@@ -511,11 +514,11 @@ def transcript_coverage_hist(self, groups=None, bins=50, x_range=(1, 1001), tr_f
     # return count dataframe and suggested default parameters for plot_distr
     cov = []
     current = None
-    for g, trid, _ in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage
-        cov.append(current_cov[:, trid])
+    for gene, transcript_id, _ in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage
+        cov.append(current_cov[:, transcript_id])
     cov = pd.DataFrame(cov, columns=self.samples)
     if groups is not None:
         cov = pd.DataFrame({grn: cov[grp].sum(1) for grn, grp in groups.items()})
@@ -552,15 +555,15 @@ def transcripts_per_gene_hist(self, groups=None, add_reference=False, bins=49, x
         group_names = self.samples
     else:
         group_names = groups.keys()
-        sidx = {sa: i for i, sa in enumerate(self.samples)}  # idx
-        groups = {gn: [sidx[sa] for sa in gr] for gn, gr in groups.items()}
+        sidx = {sample: i for i, sample in enumerate(self.samples)}  # idx
+        groups = {groupname: [sidx[sample] for sample in group] for groupname, group in groups.items()}
     n_sa = len(group_names)
-    for g, trid, _ in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage if groups is None else np.array([g.coverage[grp, :].sum(0) for grp in groups.values()])
+    for gene, transcript_id, _ in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage if groups is None else np.array([gene.coverage[grp, :].sum(0) for grp in groups.values()])
             ntr.append(np.zeros(n_sa))
-        ntr[-1] += current_cov[:, trid] >= min_coverage
+        ntr[-1] += current_cov[:, transcript_id] >= min_coverage
 
     ntr = pd.DataFrame((n for n in ntr if n.sum() > 0), columns=group_names)
     if isinstance(bins, int):
@@ -569,7 +572,7 @@ def transcripts_per_gene_hist(self, groups=None, add_reference=False, bins=49, x
     if add_reference:
         if ref_filter:
             logger.warning('reference filter not implemented')
-        ref_ntr = [g.n_ref_transcripts for g in self]  # todo: add reference filter
+        ref_ntr = [gene.n_ref_transcripts for gene in self]  # todo: add reference filter
         counts['reference'] = np.histogram(ref_ntr, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     sub = f'counting transcripts covered by >= {min_coverage} reads'
@@ -599,12 +602,12 @@ def exons_per_transcript_hist(self, groups=None, add_reference=False, bins=34, x
     n_exons = []
     cov = []
     current = None
-    for g, trid, tr in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage
-        cov.append(current_cov[:, trid])
-        n_exons.append(len(tr['exons']))
+    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage
+        cov.append(current_cov[:, transcript_id])
+        n_exons.append(len(transcript['exons']))
     cov = pd.DataFrame(cov, columns=self.samples)
     if groups is not None:
         cov = pd.DataFrame({grn: cov[grp].sum(1) for grn, grp in groups.items()})
@@ -615,7 +618,7 @@ def exons_per_transcript_hist(self, groups=None, add_reference=False, bins=34, x
         cov[cov > 0] = 1
     counts = pd.DataFrame({gn: np.histogram(n_exons, weights=g_cov, bins=bins)[0] for gn, g_cov in cov.items()})
     if add_reference:
-        ref_n_exons = [len(tr['exons']) for _, _, tr in self.iter_ref_transcripts(**ref_filter)]
+        ref_n_exons = [len(transcript['exons']) for _, _, transcript in self.iter_ref_transcripts(**ref_filter)]
         counts['reference'] = np.histogram(ref_n_exons, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     sub = f'counting transcripts covered by >= {min_coverage} reads'
@@ -625,7 +628,7 @@ def exons_per_transcript_hist(self, groups=None, add_reference=False, bins=34, x
     return pd.concat([bin_df, counts], axis=1).set_index(['from', 'to']), params
 
 
-def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(0, 1), weight_by_coverage=True, min_coverage=2, tr_filter={}, ref_filter={}):
+def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(0, 1), weight_by_coverage=True, min_coverage=2, transcript_filter={}, ref_filter={}):
     '''Retrieves the distribution of downstream adenosine content.
 
     High downstream adenosine content is indicative for internal priming.
@@ -642,13 +645,13 @@ def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(
     acontent = []
     cov = []
     current = None
-    for g, trid, tr in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage
-        cov.append(current_cov[:, trid])
+    for gene, transcript_id, transcript in self.iter_transcripts(**transcript_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage
+        cov.append(current_cov[:, transcript_id])
         try:
-            acontent.append(tr['downstream_A_content'])
+            acontent.append(transcript['downstream_A_content'])
         except KeyError:
             acontent.append(-1)
     cov = pd.DataFrame(cov, columns=self.samples)
@@ -659,9 +662,9 @@ def downstream_a_hist(self, groups=None, add_reference=False, bins=30, x_range=(
     cov[cov < min_coverage] = 0
     if not weight_by_coverage:
         cov[cov > 0] = 1
-    counts = pd.DataFrame({gn: np.histogram(acontent, weights=g_cov, bins=bins)[0] for gn, g_cov in cov.items()})
+    counts = pd.DataFrame({group_name: np.histogram(acontent, weights=group_cov, bins=bins)[0] for group_name, group_cov in cov.items()})
     if add_reference:
-        ref_acontent = [tr['downstream_A_content'] for _, _, tr in self.iter_ref_transcripts(**ref_filter) if 'downstream_A_content' in tr]
+        ref_acontent = [transcript['downstream_A_content'] for _, _, transcript in self.iter_ref_transcripts(**ref_filter) if 'downstream_A_content' in transcript]
         counts['reference'] = np.histogram(ref_acontent, bins=bins)[0]
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     params = dict(title='downstream genomic A content', xlabel='fraction of A downstream the transcript')
@@ -684,14 +687,14 @@ def direct_repeat_hist(self, groups=None, bins=10, x_range=(0, 10), weight_by_co
     # putative RTTS are identified by introns where both splice sites are novel but within annotated exons
     # TODO: actually no need to check annotation, could simply use filter flags (or the definition from the filter flags, which should be faster)
     rl = {cat: [] for cat in ('known', 'novel canonical', 'novel noncanonical')}
-    for g, trid, tr in self.iter_transcripts(**tr_filter):
-        if 'annotation' in tr and tr['annotation'][0] == 0:  # e.g. FSM
-            rl['known'].extend((drl, g.coverage[:, trid]) for drl in tr['direct_repeat_len'])
-        elif g.is_annotated and 'novel_splice_sites' in tr:
-            novel_junction = [i // 2 for i in tr['novel_splice_sites'] if i % 2 == 0 and i + 1 in tr['novel_splice_sites']]
-            nc = {v[0] for v in tr.get('noncanonical_splicing', [])}
-            rl['novel noncanonical'].extend((tr['direct_repeat_len'][sj], g.coverage[:, trid]) for sj in novel_junction if sj in nc)
-            rl['novel canonical'].extend((tr['direct_repeat_len'][sj], g.coverage[:, trid]) for sj in novel_junction if sj not in nc)
+    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+        if 'annotation' in transcript and transcript['annotation'][0] == 0:  # e.g. FSM
+            rl['known'].extend((drl, gene.coverage[:, transcript_id]) for drl in transcript['direct_repeat_len'])
+        elif gene.is_annotated and 'novel_splice_sites' in transcript:
+            novel_junction = [i // 2 for i in transcript['novel_splice_sites'] if i % 2 == 0 and i + 1 in transcript['novel_splice_sites']]
+            nc = {v[0] for v in transcript.get('noncanonical_splicing', [])}
+            rl['novel noncanonical'].extend((transcript['direct_repeat_len'][sj], gene.coverage[:, transcript_id]) for sj in novel_junction if sj in nc)
+            rl['novel canonical'].extend((transcript['direct_repeat_len'][sj], gene.coverage[:, transcript_id]) for sj in novel_junction if sj not in nc)
 
     rl_cov = {cat: pd.DataFrame((v[1] for v in rl[cat]), columns=self.samples) for cat in rl}
     if groups is not None:
@@ -702,8 +705,8 @@ def direct_repeat_hist(self, groups=None, bins=10, x_range=(0, 10), weight_by_co
             cov_df[cov_df > 0] = 1
     if isinstance(bins, int):
         bins = np.linspace(x_range[0] - .5, x_range[1] - .5, bins + 1)
-    counts = pd.DataFrame({f'{sa} {cat}': np.histogram([val[0] for val in rl_list], weights=rl_cov[cat][sa], bins=bins)[
-                          0] for cat, rl_list in rl.items() for sa in (self.samples if groups is None else groups)})
+    counts = pd.DataFrame({f'{sample} {cat}': np.histogram([val[0] for val in rl_list], weights=rl_cov[cat][sample], bins=bins)[
+                          0] for cat, rl_list in rl.items() for sample in (self.samples if groups is None else groups)})
 
     bin_df = pd.DataFrame({'from': bins[:-1], 'to': bins[1:]})
     params = dict(title='direct repeat length', xlabel='length of direct repeats at splice junctons', ylabel='# transcripts')
@@ -729,19 +732,19 @@ def rarefaction(self, groups=None, fractions=20, min_coverage=2, tr_filter={}):
     current = None
     if isinstance(fractions, int):
         fractions = np.linspace(1 / fractions, 1, fractions)
-    for g, trid, _ in self.iter_transcripts(**tr_filter):
-        if g != current:
-            current = g
-            current_cov = g.coverage
-        cov.append(current_cov[:, trid])
+    for gene, transcript_id, _ in self.iter_transcripts(**tr_filter):
+        if gene != current:
+            current = gene
+            current_cov = gene.coverage
+        cov.append(current_cov[:, transcript_id])
     cov = pd.DataFrame(cov, columns=self.samples)
     total = dict(self.sample_table.set_index('name').nonchimeric_reads)
     if groups is not None:
         cov = pd.DataFrame({grn: cov[grp].sum(1) for grn, grp in groups.items()})
-        total = {grn: sum(n for sa, n in total.items() if sa in grp) for grn, grp in groups.items()}
+        total = {groupname: sum(n for sample, n in total.items() if sample in group) for groupname, group in groups.items()}
     curves = {}
-    for sa in cov:
-        curves[sa] = [(np.random.binomial(n=cov[sa], p=th) >= min_coverage).sum() for th in fractions]
+    for sample in cov:
+        curves[sample] = [(np.random.binomial(n=cov[sample], p=th) >= min_coverage).sum() for th in fractions]
     return pd.DataFrame(curves, index=fractions), total
 
 
@@ -783,16 +786,16 @@ def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=1
         _, _, groups = _check_groups(self, [samples], 1)
         samples = groups[0]
 
-    for g in self.iter_genes(**kwargs):
-        events = events_dict.get(g.id, []) if events_dict is not None else None
+    for gene in self.iter_genes(**kwargs):
+        events = events_dict.get(gene.id, []) if events_dict is not None else None
         try:
-            next_test_res = g.coordination_test(test=test, samples=samples, min_dist=min_dist, min_total=min_total,
+            next_test_res = gene.coordination_test(test=test, samples=samples, min_dist=min_dist, min_total=min_total,
                                                 min_alt_fraction=min_alt_fraction,
                                                 events=events, event_type=event_type)
             test_res.extend(next_test_res)
 
         except Exception:
-            logger.error(f"\nError encounter on {print(g)} {g.id}   :  {g.name}.")
+            logger.error(f"\nError encounter on {print(gene)} {gene.id}   :  {gene.name}.")
             raise
 
     col_names = ("gene_id", "gene_name", "strand", "eventA_type", "eventB_type", "eventA_start", "evemtA_end",

@@ -39,15 +39,15 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
     f, axs = plt.subplots(*grid_shape)
     axs = axs.flatten()
     x = [i / 100 for i in range(101)]
-    group_names = [c[:-4] for c in result_table.columns if c.endswith('_PSI')][:2]
-    groups = {gn: [c[:c.rfind(gn)-1] for c in result_table.columns if c.endswith(gn + '_total_cov')] for gn in group_names}
+    group_names = [col[:-4] for col in result_table.columns if col.endswith('_PSI')][:2]
+    groups = {group_name: [col[:col.rfind(group_name)-1] for col in result_table.columns if col.endswith(group_name + '_total_cov')] for group_name in group_names}
     if group_colors is None:
         group_colors = ['C0', 'C1']
     if isinstance(group_colors, list):
         group_colors = dict(zip(group_names, group_colors))
     if sample_colors is None:
         sample_colors = {}
-    sample_colors = {sa: sample_colors.get(sa, group_colors[gn]) for gn in group_names for sa in groups[gn]}
+    sample_colors = {sample: sample_colors.get(sample, group_colors[name]) for name in group_names for sample in groups[name]}
     other = {group_names[0]: group_names[1], group_names[1]: group_names[0]}
     logger.debug('groups: %s', str(groups))
     for idx, row in result_table.iterrows():
@@ -56,13 +56,13 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
             continue
         if row.gene in plotted:
             continue
-        params_alt = {gn: (row[f'{gn}_PSI'], row[f'{gn}_disp']) for gn in group_names}
+        params_alt = {group_name: (row[f'{group_name}_PSI'], row[f'{group_name}_disp']) for group_name in group_names}
         # select only samples covered >= min_cov
-        # psi_gr = {gn: [row[f'{sa}_in_cov'] / row[f'{sa}_total_cov'] for sa in gr if row[f'{sa}_total_cov'] >= min_cov] for gn, gr in groups.items()}
-        psi_gr_list = [(sa, gn, row[f'{sa}_{gn}_in_cov'] / row[f'{sa}_{gn}_total_cov'])
-                       for gn, gr in groups.items() for sa in gr if row[f'{sa}_{gn}_total_cov'] >= min_cov]
+        # psi_gr = {groupname: [row[f'{sample}_in_cov'] / row[f'{sample}_total_cov'] for sample in group if row[f'{sample}_total_cov'] >= min_cov] for groupname, group in groups.items()}
+        psi_gr_list = [(sample, groupname, row[f'{sample}_{groupname}_in_cov'] / row[f'{sample}_{groupname}_total_cov'])
+                       for groupname, group in groups.items() for sample in group if row[f'{sample}_{groupname}_total_cov'] >= min_cov]
         psi_gr = pd.DataFrame(psi_gr_list, columns=['sample', 'group', 'psi'])
-        psi_gr['support'] = [abs(sa.psi - params_alt[sa['group']][0]) < abs(sa.psi - params_alt[other[sa['group']]][0]) for i, sa in psi_gr.iterrows()]
+        psi_gr['support'] = [abs(sample.psi - params_alt[sample['group']][0]) < abs(sample.psi - params_alt[other[sample['group']]][0]) for i, sample in psi_gr.iterrows()]
         support = dict(psi_gr.groupby('group')['support'].sum())
         if any(sup < min_support for sup in support.values()):
             logger.debug('skipping %s with %s supporters', row.gene, support)
@@ -75,18 +75,18 @@ def plot_diff_results(result_table, min_support=3, min_diff=.1, grid_shape=(5, 5
         # ax.boxplot([mut,wt], labels=['mut','wt'])
         sns.swarmplot(data=psi_gr, x='psi', y='group', hue='sample', orient='h', size=np.sqrt(pt_size), palette=sample_colors, ax=ax)
         ax.legend([], [], frameon=False)
-        for i, gn in enumerate(group_names):
-            max_i = int(params_alt[gn][0] * (len(x) - 1))
+        for i, group_name in enumerate(group_names):
+            max_i = int(params_alt[group_name][0] * (len(x) - 1))
             ax2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
-            if params_alt[gn][1] > 0:
-                m, v = params_alt[gn]
+            if params_alt[group_name][1] > 0:
+                m, v = params_alt[group_name]
                 params = ((-m * (m**2 - m + v)) / v, ((m - 1) * (m**2 - m + v)) / v)
                 y = beta(*params).pdf(x)
-                y[max_i] = beta(*params).pdf(params_alt[gn][0])
+                y[max_i] = beta(*params).pdf(params_alt[group_name][0])
             else:
                 y = np.zeros(len(x))
                 y[max_i] = 1  # point mass
-            ax2.plot(x, y, color=group_colors[gn], lw=lw, ls=ls)
+            ax2.plot(x, y, color=group_colors[group_name], lw=lw, ls=ls)
             ax2.tick_params(right=False, labelright=False)
         ax.set_title(f'{row.gene} {row.splice_type}\nFDR={row.padj:.5f}')
         plotted[row.gene] = row
@@ -144,9 +144,9 @@ def plot_embedding(splice_bubbles, method='PCA', prior_count=3,
     if groups is None:
         groups = {'all samples': samples}
     else:
-        sa_group = {sa: gn for gn, salist in groups.items() for sa in salist if sa in samples}
+        sa_group = {sample: groupname for groupname, sample_list in groups.items() for sample in sample_list if sample in samples}
         if len(samples) > len(sa_group):
-            samples = [sa for sa in samples if sa in sa_group]
+            samples = [sample for sample in samples if sample in sa_group]
             logger.info('restricting embedding on samples ' + ', '.join(samples))
             n = n[samples]
             k = k[samples]
@@ -186,11 +186,11 @@ def plot_embedding(splice_bubbles, method='PCA', prior_count=3,
 
     if ax is None:
         _, ax = plt.subplots()
-    for gr, sa in groups.items():
+    for group, sample in groups.items():
         ax.scatter(
-            transformed.loc[sa, plot_components[0] - 1],
-            transformed.loc[sa, plot_components[1] - 1],
-            c=colors[gr], label=gr, s=pt_size)
+            transformed.loc[sample, plot_components[0] - 1],
+            transformed.loc[sample, plot_components[1] - 1],
+            c=colors[group], label=group, s=pt_size)
     ax.set(**axparams)
     if labels:
         for idx, (x, y) in transformed[plot_components - 1].iterrows():
@@ -320,10 +320,10 @@ def plot_saturation(isoseq=None, ax=None, cov_th=2, expr_th=[.5, 1, 2, 5, 10], x
     for tpm_th in expr_th:
         chance = nbinom.cdf(k - cov_th, n=cov_th, p=tpm_th * 1e-6)  # 0 to k-cov_th failiors
         ax.plot(k / 1e6, chance, label=f'{tpm_th} TPM')
-    for sa, cov in n_reads.items():
+    for sample, cov in n_reads.items():
         ax.axvline(cov / 1e6, color='grey', ls='--')
         if label:
-            ax.text((cov + (k[-1] - k[0]) / 200) / 1e6, 0.1, f'{sa} ({cov/1e6:.2f} M)', rotation=-90)
+            ax.text((cov + (k[-1] - k[0]) / 200) / 1e6, 0.1, f'{sample} ({cov/1e6:.2f} M)', rotation=-90)
     ax.set(**axparams)
 
     if legend:
@@ -346,9 +346,9 @@ def plot_rarefaction(rarefaction, total=None,  ax=None, legend=True, colors=None
         _, ax = plt.subplots()
     if colors is None:
         colors = {}
-    for sa in rarefaction.columns:
-        ax.plot([float(f) * total[sa] / 1e6 if total is not None else float(f)*100 for f in rarefaction.index], rarefaction[sa],
-                label=sa, ls=ls, lw=lw, color=colors.get(sa, None))
+    for sample in rarefaction.columns:
+        ax.plot([float(f) * total[sample] / 1e6 if total is not None else float(f)*100 for f in rarefaction.index], rarefaction[sample],
+                label=sample, ls=ls, lw=lw, color=colors.get(sample, None))
 
     axparams.setdefault('title', 'Rarefaction Analysis')  # [nr],{'fontsize':20}, loc='left', pad=10)
     axparams.setdefault('ylabel', 'Number of discovered Transcripts')

@@ -46,7 +46,7 @@ def add_domains_to_table(table, transcriptome, source='annotation', categories=N
     :parm overlap_only: If set "True", only domains overlapping the region from column "start" to "end" are considered.
         If set "False", all domains of the transcripts are considered.
     :param insert_after: Define column after which the domains are inserted into the table, either by column name or index.
-        By default, domain columns returned as seperate DataFrame.
+        By default, domain columns returned as separate DataFrame.
     :param **filter_kwargs: additional keywords are passed to Gene.filter_transcripts, to restrict the transcripts to be considered.'''
 
     # set operators:
@@ -74,15 +74,15 @@ def add_domains_to_table(table, transcriptome, source='annotation', categories=N
     domain_rows = {}
     for idx, row in table.iterrows():
         domains = []
-        g = transcriptome[row[id_col]]
+        gene = transcriptome[row[id_col]]
         if filter_kwargs:
-            valid_transcripts = set(g.filter_transcripts(**filter_kwargs))
+            valid_transcripts = set(gene.filter_transcripts(**filter_kwargs))
         domain_sets = {}
         for tr_col in tr_cols:
             domain_sets[tr_col] = set()
-            trids = set(row[tr_col]) & valid_transcripts if filter_kwargs else set(row[tr_col])
-            for trid in trids:
-                for dom in g.transcripts[trid].get('domain', {}).get(source, []):
+            transcript_ids = set(row[tr_col]) & valid_transcripts if filter_kwargs else set(row[tr_col])
+            for transcript_id in transcript_ids:
+                for dom in gene.transcripts[transcript_id].get('domain', {}).get(source, []):
                     if categories is not None and dom[2] not in categories:
                         continue
                     if overlap_only and not has_overlap(dom[4], (row.start, row.end)):
@@ -121,22 +121,22 @@ def get_hmmer_sequences(transcriptome, genome_fn, aa_alphabet, query=True, ref_q
     '''Get protein sequences in binary hmmer format.'''
     tr_ids = {}
     if query:
-        for g, trids, _ in transcriptome.iter_transcripts(genewise=True, query=query, region=region, min_coverage=min_coverage,
+        for gene, trids, _ in transcriptome.iter_transcripts(genewise=True, query=query, region=region, min_coverage=min_coverage,
                                                           max_coverage=max_coverage, gois=gois, progress_bar=progress_bar):
-            tr_ids.setdefault(g.id, [[], []])[0] = trids
+            tr_ids.setdefault(gene.id, [[], []])[0] = trids
     if ref_query:
-        for g, trids, _ in transcriptome.iter_ref_transcripts(genewise=True, query=ref_query, region=region, gois=gois, progress_bar=progress_bar):
-            tr_ids.setdefault(g.id, [[], []])[1] = trids
+        for gene, trids, _ in transcriptome.iter_ref_transcripts(genewise=True, query=ref_query, region=region, gois=gois, progress_bar=progress_bar):
+            tr_ids.setdefault(gene.id, [[], []])[1] = trids
 
     sequences = []
     seq_ids = []
     with FastaFile(genome_fn) as genome_fh:
-        for gid in tr_ids:
-            g = transcriptome[gid]
+        for gene_id in tr_ids:
+            gene = transcriptome[gene_id]
             seqs = {}
             for source in range(2):
-                for trid, seq in g.get_sequence(genome_fh, tr_ids[gid][source], protein=True, reference=source).items():
-                    seqs.setdefault(seq, []).append((gid, source, trid))
+                for trid, seq in gene.get_sequence(genome_fh, tr_ids[gene_id][source], protein=True, reference=source).items():
+                    seqs.setdefault(seq, []).append((gene_id, source, trid))
             for seq, seqnames in seqs.items():
                 # Hack: use "name" attribute to store an integer.
                 # Must be string encoded since it is interpreted as 0 terminated string and thus truncated
@@ -191,14 +191,14 @@ def add_hmmer_domains(self, domain_models, genome, query=True, ref_query=False, 
     dom_count = [0, 0]
     tr_count = [0, 0]
     for seq_nr, domL in domains.items():
-        for gid, reference, trid in seq_ids[seq_nr]:
-            g = self[gid]
-            tr = g.ref_transcripts[trid] if reference else g.transcripts[trid]
+        for gene_id, reference, transcript_id in seq_ids[seq_nr]:
+            gene = self[gene_id]
+            transcript = gene.ref_transcripts[transcript_id] if reference else gene.transcripts[transcript_id]
             # get the genomic position of the domain boundaries
-            orf = sorted(g.find_transcript_positions(trid, tr.get('CDS', tr.get('ORF'))[:2], reference=reference))
-            pos_map = genomic_position([p+orf[0] for dom in domL for p in dom[3]], tr['exons'], g.strand == '-')
+            orf = sorted(gene.find_transcript_positions(transcript_id, transcript.get('CDS', transcript.get('ORF'))[:2], reference=reference))
+            pos_map = genomic_position([p+orf[0] for dom in domL for p in dom[3]], transcript['exons'], gene.strand == '-')
             trdom = tuple((*dom[:4], (pos_map[dom[3][0]+orf[0]], pos_map[dom[3][1]+orf[0]]), *dom[4:]) for dom in domL)
-            tr.setdefault('domain', {})['hmmer'] = trdom
+            transcript.setdefault('domain', {})['hmmer'] = trdom
             tr_count[reference] += 1
             dom_count[reference] += len(domL)
     logger.info(f'found domains at {dom_count[1]} loci for {tr_count[1]} reference transcripts ' +
@@ -209,7 +209,7 @@ def add_annotation_domains(self, annotation, category, id_col='uniProtId', name_
     '''Annotate isoforms with protein domains from uniprot ucsc table files.
 
     This function adds protein domains and other protein annotation to the transcripts.
-    Annotation tables can be retriefed from https://genome.ucsc.edu/cgi-bin/hgTables. Select
+    Annotation tables can be retrieved from https://genome.ucsc.edu/cgi-bin/hgTables. Select
     group: = "Genes and Gene Predictions", track: "UniProt", and chose from the available tables (e.g. "domains").
 
     :param annotation: The file name of the table downloaded from the table browser, or a pandas dataframe with the content.
@@ -230,32 +230,32 @@ def add_annotation_domains(self, annotation, category, id_col='uniProtId', name_
     else:
         raise ValueError('"annotation" should be file name or pandas.DataFrame object')
     anno = anno.rename({'#chrom': 'chrom'}, axis=1)
-    not_found = [c for c in ['chrom', 'chromStart', 'chromEnd', 'chromStarts', 'blockSizes', name_col] if c not in anno.columns]
+    not_found = [col for col in ['chrom', 'chromStart', 'chromEnd', 'chromStarts', 'blockSizes', name_col] if col not in anno.columns]
     assert len(not_found) == 0, f'did not find the following columns in the annotation table: {", ".join(not_found)}'
     for _, row in tqdm(anno.iterrows(), total=len(anno), disable=not progress_bar, unit='domains'):
         if row['chrom'] not in self.chromosomes:
             continue
-        for g in self.iter_genes(region=(row['chrom'], row.chromStart, row.chromEnd)):
+        for gene in self.iter_genes(region=(row['chrom'], row.chromStart, row.chromEnd)):
             block_starts, block_sizes = list(map(int, row.chromStarts.split(','))), list(map(int, row.blockSizes.split(',')))
             blocks = []
-            for s, l in zip(block_starts, block_sizes):
-                if not blocks or row.chromStart+s > blocks[-1][1]:
-                    blocks.append([row.chromStart+s, row.chromStart+s+l])
+            for start, length in zip(block_starts, block_sizes):
+                if not blocks or row.chromStart+start > blocks[-1][1]:
+                    blocks.append([row.chromStart+start, row.chromStart+start+length])
                 else:
-                    blocks[-1][1] = row.chromStart+s+l
+                    blocks[-1][1] = row.chromStart+start+length
 
             for ref in range(2):
-                transcripts = g.ref_transcripts if ref else g.transcripts
+                transcripts = gene.ref_transcripts if ref else gene.transcripts
                 if not transcripts:
                     continue
-                sg = g.ref_segment_graph if ref else g.segment_graph
-                trids = [trid for trid in sg.search_transcript(blocks, complete=False, include_ends=True)
-                         if 'ORF' in transcripts[trid] or 'CDS' in transcripts[trid]]
-                for trid in trids:
-                    tr = transcripts[trid]
+                sg = gene.ref_segment_graph if ref else gene.segment_graph
+                transcript_ids = [transcript_id for transcript_id in sg.search_transcript(blocks, complete=False, include_ends=True)
+                                  if 'ORF' in transcripts[transcript_id] or 'CDS' in transcripts[transcript_id]]
+                for transcript_id in transcript_ids:
+                    transcript = transcripts[transcript_id]
                     try:
-                        orf_pos = sorted(g.find_transcript_positions(trid, tr.get('CDS', tr.get('ORF'))[:2], reference=ref))
-                        domain_pos = sorted(g.find_transcript_positions(trid, (row.chromStart, row.chromEnd), reference=ref))
+                        orf_pos = sorted(gene.find_transcript_positions(transcript_id, transcript.get('CDS', transcript.get('ORF'))[:2], reference=ref))
+                        domain_pos = sorted(gene.find_transcript_positions(transcript_id, (row.chromStart, row.chromEnd), reference=ref))
                     except TypeError:  # > not supported for None, None
                         continue
                     if not (orf_pos[0] <= domain_pos[0] and domain_pos[1] <= orf_pos[1]):  # check within ORF
@@ -266,8 +266,8 @@ def add_annotation_domains(self, annotation, category, id_col='uniProtId', name_
                     dom_pos = (domain_pos[0]-orf_pos[0], domain_pos[1]-orf_pos[0])
                     dom_vals = (row[id_col], row[name_col], category,  dom_pos, (row.chromStart, row.chromEnd))
                     # check if present already
-                    if dom_vals not in tr.setdefault('domain', {}).setdefault('annotation', []):
-                        tr['domain']['annotation'].append(dom_vals)
+                    if dom_vals not in transcript.setdefault('domain', {}).setdefault('annotation', []):
+                        transcript['domain']['annotation'].append(dom_vals)
 
     logger.info(f'found domains at {domain_count} transcript loci')
 
@@ -347,15 +347,15 @@ def add_interpro_domains(self, genome, email, baseUrl='http://www.ebi.ac.uk/Tool
     :param max_coverage: The maximum coverage threshold. Transcripts with more reads in total are ignored.
     :param progress_bar: If set True, the progress is depicted with a progress bar.'''
 
-    seqs = {}  # seq -> trids dict, to avoid requesting the same sequence
+    seqs = {}  # seq -> transcript_ids dict, to avoid requesting the same sequence
     if query:
-        trids = self.filter_transcripts(query=query, min_coverage=min_coverage, max_coverage=max_coverage)
-        for trid, seq in self.get_sequence(genome, trids, protein=True).items():
-            seqs.setdefault(seq, {}).setdefault('isotools', []).append(trid)
+        transcript_ids = self.filter_transcripts(query=query, min_coverage=min_coverage, max_coverage=max_coverage)
+        for transcript_id, seq in self.get_sequence(genome, transcript_ids, protein=True).items():
+            seqs.setdefault(seq, {}).setdefault('isotools', []).append(transcript_id)
     if ref_query:
-        ref_trids = self.filter_ref_transcripts(query=ref_query)
-        for trid, seq in self.get_sequence(genome, ref_trids, protein=True, reference=True).items():
-            seqs.setdefault(seq, {}).setdefault('reference', []).append(trid)
+        ref_transcript_ids = self.filter_ref_transcripts(query=ref_query)
+        for transcript_id, seq in self.get_sequence(genome, ref_transcript_ids, protein=True, reference=True).items():
+            seqs.setdefault(seq, {}).setdefault('reference', []).append(transcript_id)
 
     dom_results = get_interpro_domains(list(seqs.keys()), email, baseUrl, progress_bar, max_jobs, poll_time)
     for i, (dom,) in enumerate(dom_results):
@@ -363,20 +363,20 @@ def add_interpro_domains(self, genome, email, baseUrl='http://www.ebi.ac.uk/Tool
             logger.warning(f'no response for sequence of {list(seqs.values())[i]}')
             continue
         domL = []
-        for m in dom['matches']:
-            for loc in m['locations']:
-                entry = m['signature'].get('entry')
-                domL.append((str(m['signature']['accession']),  # short name
-                             str(m['signature']['name']),
+        for match in dom['matches']:
+            for loc in match['locations']:
+                entry = match['signature'].get('entry')
+                domL.append((str(match['signature']['accession']),  # short name
+                             str(match['signature']['name']),
                              entry.get('type', "unknown") if entry else "unknown",  # type
                              (loc['start']*3, loc['end']*3),  # position
                              loc.get('hmmBounds')))  # completeness
                 # todo: potentially add more relevant information here
         for reference in range(2):
-            for trid in seqs[dom['sequence']].get('reference' if reference else 'isotools', []):
-                tr = self.ref_transcripts[trid] if reference else self.transcripts[trid]
-                orf = sorted(self.find_transcript_positions(trid, tr.get('CDS', tr.get('ORF'))[:2], reference=reference))
-                pos_map = genomic_position([p+orf[0] for dom in domL for p in dom[3]], tr['exons'], self.strand == '-')
+            for transcript_id in seqs[dom['sequence']].get('reference' if reference else 'isotools', []):
+                transcript = self.ref_transcripts[transcript_id] if reference else self.transcripts[transcript_id]
+                orf = sorted(self.find_transcript_positions(transcript_id, transcript.get('CDS', transcript.get('ORF'))[:2], reference=reference))
+                pos_map = genomic_position([p+orf[0] for dom in domL for p in dom[3]], transcript['exons'], self.strand == '-')
                 trdom = tuple((*dom[:4], (pos_map[dom[3][0]+orf[0]], pos_map[dom[3][1]+orf[0]]), *dom[4:]) for dom in domL)
 
-                tr.setdefault('domain', {})['interpro'] = trdom
+                transcript.setdefault('domain', {})['interpro'] = trdom

@@ -7,6 +7,7 @@ from tqdm import tqdm
 import builtins
 import logging
 from scipy.stats import chi2_contingency, fisher_exact
+import math
 
 
 # from Kozak et al, NAR, 1987
@@ -109,16 +110,19 @@ def junctions_from_cigar(cigartuples, offset):
     'returns the exon positions'
     exons = list([[offset, offset]])
     for cigar in cigartuples:
-        if cigar[0] == 3:  # N ->  Splice junction
-            pos = exons[-1][1]+cigar[1]
+        # N -> Splice junction
+        if cigar[0] == 3:
+            pos = exons[-1][1] + cigar[1]
             if exons[-1][0] == exons[-1][1]:
                 # delete zero length exons
                 # (may occur if insertion within intron, e.g. 10M100N10I100N10M)
                 del exons[-1]
             exons.append([pos, pos])
-        elif cigar[0] in (0, 2, 7, 8):  # MD=X -> move forward on reference
+        # MD=X -> move forward on reference
+        elif cigar[0] in (0, 2, 7, 8):
             exons[-1][1] += cigar[1]
-    if exons[-1][0] == exons[-1][1]:  # delete 0 length exons at the end
+    # delete 0 length exons at the end
+    if exons[-1][0] == exons[-1][1]:
         del exons[-1]
     return exons
 
@@ -139,16 +143,29 @@ def is_same_gene(tr1, tr2, spj_iou_th=0, reg_iou_th=.5):
     return False
 
 
-def splice_identical(tr1, tr2):
+def splice_identical(exon_list1, exon_list2, strictness=math.inf):
+    '''
+    Check whether two transcripts are identical in terms of splice sites.
+    :param exon_list1: transcript 1 as a list of tuples for each exon
+    :param exon_list2: transcript 2 as a list of tuples for each exon
+    :param strictness: Number of bp that are allowed to differ for transcription start and end sites to be still considered identical.
+    '''
     # all splice sites are equal
-    if len(tr1) != len(tr2):  # different number of exons
+    # different number of exons
+    if len(exon_list1) != len(exon_list2):
         return False
-    if len(tr1) == 1 and has_overlap(tr1[0], tr2[0]):  # single exon genes
+    # single exon genes
+    if len(exon_list1) == 1 and has_overlap(exon_list1[0], exon_list2[0]):
         return True
-    if tr1[0][1] != tr2[0][1] or tr1[-1][0] != tr2[-1][0]:  # check first and last exons
+    # Check start of first and end of last exon
+    if abs(exon_list1[0][0] - exon_list2[0][0]) > strictness or abs(exon_list1[-1][1] - exon_list2[-1][1]) > strictness:
         return False
-    for e1, e2 in zip(tr1[1:-1], tr2[1:-1]):  # check other exons
-        if e1[0] != e2[0] or e1[1] != e2[1]:
+    # check end of first and and start of last exon
+    if exon_list1[0][1] != exon_list2[0][1] or exon_list1[-1][0] != exon_list2[-1][0]:
+        return False
+    # check other exons
+    for exon1, exon2 in zip(exon_list1[1:-1], exon_list2[1:-1]):
+        if exon1[0] != exon2[0] or exon1[1] != exon2[1]:
             return False
     return True
 
@@ -258,7 +275,7 @@ def _filter_function(expression, context_filters = {}):
         if depth > 10:
             raise ValueError(f'Filter expression evaluation max depth reached. Expression `{original_expression}` was evaluated to `{expression}`')
 
-    # potential issue: g.coverage gets detected as ["g", "coverage"], e.g. coverage is added. Probably not causing trubble
+    # potential issue: gene.coverage gets detected as ["gene", "coverage"], e.g. coverage is added. Probably not causing trubble
     return eval(f'lambda {",".join([arg+"=None" for arg in args]+["**kwargs"])}: bool({expression})\n', {}, {}), args
 
 
@@ -295,15 +312,15 @@ def _filter_event(coverage, event, min_total=100, min_alt_fraction=.1):
 
 
 def _get_exonic_region(transcripts):
-    e_starts = iter(sorted([e[0] for tr in transcripts for e in tr['exons']]))
-    e_ends = iter(sorted([e[1] for tr in transcripts for e in tr['exons']]))
-    exon_reg = [[next(e_starts), next(e_ends)]]
-    for next_start in e_starts:
-        if next_start <= exon_reg[-1][1]:
-            exon_reg[-1][1] = next(e_ends)
+    exon_starts = iter(sorted([e[0] for transcript in transcripts for e in transcript['exons']]))
+    exon_ends = iter(sorted([e[1] for transcript in transcripts for e in transcript['exons']]))
+    exon_region = [[next(exon_starts), next(exon_ends)]]
+    for next_start in exon_starts:
+        if next_start <= exon_region[-1][1]:
+            exon_region[-1][1] = next(exon_ends)
         else:
-            exon_reg.append([next_start, next(e_ends)])
-    return exon_reg
+            exon_region.append([next_start, next(exon_ends)])
+    return exon_region
 
 
 def _get_overlap(exons, transcripts):
@@ -316,28 +333,28 @@ def _get_overlap(exons, transcripts):
     if not transcripts:
         return 0
     # 1) get exononic regions in transcripts
-    exon_reg = _get_exonic_region(transcripts)
+    exon_region = _get_exonic_region(transcripts)
     # 2) find overlap of exonic regions with exons
     ol = 0
     i = 0
-    for e in exons:
-        while exon_reg[i][1] < e[0]:  # no overlap, go on
+    for exon in exons:
+        while exon_region[i][1] < exon[0]:  # no overlap, go on
             i += 1
-            if i == len(exon_reg):
+            if i == len(exon_region):
                 return ol
-        while exon_reg[i][0] < e[1]:
-            i_end = min(e[1], exon_reg[i][1])
-            i_start = max(e[0], exon_reg[i][0])
+        while exon_region[i][0] < exon[1]:
+            i_end = min(exon[1], exon_region[i][1])
+            i_start = max(exon[0], exon_region[i][0])
             ol += (i_end - i_start)
-            if exon_reg[i][1] > e[1]:  # might overlap with next exon
+            if exon_region[i][1] > exon[1]:  # might overlap with next exon
                 break
             i += 1
-            if i == len(exon_reg):
+            if i == len(exon_region):
                 return ol
     return ol
 
 
-def _find_splice_sites(sj, transcripts):
+def _find_splice_sites(splice_junctions, transcripts):
     '''Checks whether the splice sites of a new transcript are present in the set of transcripts.
     Avoids the computation of segment graph, which provides the same functionality.
 
@@ -346,36 +363,36 @@ def _find_splice_sites(sj, transcripts):
     :param transcripts: transcripts to scan
     :return: boolean array indicating whether the splice site is contained or not'''
 
-    sites = np.zeros((len(sj)) * 2, dtype=bool)
+    sites = np.zeros((len(splice_junctions)) * 2, dtype=bool)
     # check exon ends
     splice_junction_starts = {}
     splice_junction_ends = {}
-    for i, ss in enumerate(sj):
-        splice_junction_starts.setdefault(ss[0], []).append(i)
-        splice_junction_ends.setdefault(ss[1], []).append(i)
+    for i, splice_site in enumerate(splice_junctions):
+        splice_junction_starts.setdefault(splice_site[0], []).append(i)
+        splice_junction_ends.setdefault(splice_site[1], []).append(i)
 
-    tr_list = [iter(tr['exons'][:-1]) for tr in transcripts if len(tr['exons']) > 1]
-    current = [next(tr) for tr in tr_list]
-    for sjs, idx in sorted(splice_junction_starts.items()):  # splice junction starts, sorted by position
-        for j, tr_iter in enumerate(tr_list):
+    transcript_list = [iter(transcript['exons'][:-1]) for transcript in transcripts if len(transcript['exons']) > 1]
+    current = [next(transcript) for transcript in transcript_list]
+    for splice_junction_start, idx in sorted(splice_junction_starts.items()):  # splice junction starts, sorted by position
+        for j, transcript_iter in enumerate(transcript_list):
             try:
-                while sjs > current[j][1]:
-                    current[j] = next(tr_iter)
-                if current[j][1] == sjs:
+                while splice_junction_start > current[j][1]:
+                    current[j] = next(transcript_iter)
+                if current[j][1] == splice_junction_start:
                     for i in idx:
                         sites[i * 2] = True
                     break
             except StopIteration:
                 continue
     # check exon starts
-    tr_list = [iter(tr['exons'][1:]) for tr in transcripts if len(tr['exons']) > 1]
-    current = [next(tr) for tr in tr_list]
-    for sje, idx in sorted(splice_junction_ends.items()):  # splice junction ends, sorted by position
-        for j, tr_iter in enumerate(tr_list):
+    transcript_list = [iter(transcript['exons'][1:]) for transcript in transcripts if len(transcript['exons']) > 1]
+    current = [next(transcript) for transcript in transcript_list]
+    for splice_junction_end, idx in sorted(splice_junction_ends.items()):  # splice junction ends, sorted by position
+        for j, transcript_iter in enumerate(transcript_list):
             try:
-                while sje > current[j][0]:
-                    current[j] = next(tr_iter)
-                if current[j][0] == sje:
+                while splice_junction_end > current[j][0]:
+                    current[j] = next(transcript_iter)
+                if current[j][0] == splice_junction_end:
                     for i in idx:
                         sites[i * 2 + 1] = True
                     break
@@ -393,11 +410,11 @@ def precompute_events_dict(transcriptome, event_type=("ES", "5AS", "3AS", "IR", 
 
     events_dict = {}
 
-    for g in transcriptome.iter_genes(region=region, query=query, progress_bar=progress_bar):
-        sg = g.segment_graph
-        events = [e for e in sg.find_splice_bubbles(types=event_type) if g.coverage.sum(axis=0)[e[0]+e[1]].sum() >= min_cov]
+    for gene in transcriptome.iter_genes(region=region, query=query, progress_bar=progress_bar):
+        sg = gene.segment_graph
+        events = [event for event in sg.find_splice_bubbles(types=event_type) if gene.coverage.sum(axis=0)[event[0]+event[1]].sum() >= min_cov]
         if events:
-            events_dict[g.id] = events
+            events_dict[gene.id] = events
 
     return events_dict
 
@@ -439,13 +456,13 @@ def prepare_contingency_table(eventA, eventB, coverage):
     '''
 
     con_tab = np.zeros((2, 2), dtype=int)
-    trid_tab = np.zeros((2, 2), dtype=object)
+    transcript_id_table = np.zeros((2, 2), dtype=object)
 
     for m, n in itertools.product(range(2), range(2)):
-        trids = sorted(set(eventA[m]) & set(eventB[n]), key=coverage.__getitem__, reverse=True)
-        trid_tab[n, m] = trids
-        con_tab[n, m] = coverage[trids].sum()
-    return con_tab, trid_tab
+        transcript_ids = sorted(set(eventA[m]) & set(eventB[n]), key=coverage.__getitem__, reverse=True)
+        transcript_id_table[n, m] = transcript_ids
+        con_tab[n, m] = coverage[transcript_ids].sum()
+    return con_tab, transcript_id_table
 
 
 def pairwise_event_test(con_tab, test="fisher", pseudocount=.01):
