@@ -1095,24 +1095,31 @@ class Gene(Interval):
 
 
     def _TSS_correction(self, transcript: Transcript):
-        '''Correct TSS to the closest upstream reference TSS from best peak'''
+        '''
+        Correct TSS to the closest upstream reference TSS from best peak.
+        Don't extend past exon ends, because that can introduce artificial intron retention events.
+        '''
         if self.is_annotated:
             if transcript['strand'] == '+':
                 tss = transcript['exons'][0][0]
                 ref_tsss = [ref_transcript['exons'][0][0] for ref_transcript in self.ref_transcripts if ref_transcript['exons'][0][0] <= tss]
                 if ref_tsss:
-                    old_tss = tss
-                    tss = max(ref_tsss)
-                    logger.debug(f'Corrected TSS ({transcript['strand']} strand) from {old_tss} to {tss}')
-                    transcript['exons'][0][0] = tss
+                    new_tss = max(ref_tsss)
+                    # Find ref upstream exon ends that are between the old and the new TSS
+                    ref_exon_ends = [exon[1] for transcript in self.ref_transcripts for exon in transcript["exons"] if exon[1] <= tss and exon[1] >= new_tss]
+                    # Don't extend past exon ends
+                    if not ref_exon_ends:
+                        logger.debug(f'Corrected TSS ({transcript['strand']} strand) from {tss} to {new_tss}')
+                        transcript['exons'][0][0] = new_tss
             else:
                 tss = transcript['exons'][-1][1]
                 ref_tsss = [ref_transcript['exons'][-1][1] for ref_transcript in self.ref_transcripts if ref_transcript['exons'][-1][1] >= tss]
                 if ref_tsss:
-                    old_tss = tss
-                    tss = min(ref_tsss)
-                    logger.debug(f'Corrected TSS ({transcript['strand']} strand) from {old_tss} to {tss}')
-                    transcript['exons'][-1][1] = tss
+                    new_tss = min(ref_tsss)
+                    ref_exon_ends = [exon[0] for transcript in self.ref_transcripts for exon in transcript["exons"] if exon[0] >= tss and exon[0] <= new_tss]
+                    if not ref_exon_ends:
+                        logger.debug(f'Corrected TSS ({transcript['strand']} strand) from {tss} to {new_tss}')
+                        transcript['exons'][-1][1] = new_tss
 
 
 def _coding_len(exons: list[tuple[int, int]], cds):
