@@ -364,7 +364,10 @@ def _filter_transcripts(gene, transcripts, query_fun, filter_fun, g_filter_eval,
             continue
         if maxcoverage and gene.coverage[:, i].sum() > maxcoverage:
             continue
+        filter_transcript = transcript.copy()
+        if 'transcript_id' in filter_transcript:
+            filter_transcript['ref_transcript_id'] = filter_transcript.pop('transcript_id')
         query_result = query_fun is None or query_fun(
-            **g_filter_eval, **{tag: _eval_filter_fun(f, tag, gene=gene, transcript_id=i, **transcript) for tag, f in filter_fun.items()})
+            **g_filter_eval, **{tag: _eval_filter_fun(f, tag, gene=gene, transcript_id=i, **filter_transcript) for tag, f in filter_fun.items()})
         if query_result:
             yield i, transcript
