@@ -6,7 +6,11 @@ import logging
 import numpy as np
 import pandas as pd
 import itertools
+from typing import Literal, Optional, TYPE_CHECKING
+from ._utils import ASEType
 
+if TYPE_CHECKING:
+    from .transcriptome import Transcriptome
 
 # from .decorators import deprecated, debug, experimental
 from ._utils import _filter_function
@@ -133,7 +137,7 @@ TESTS = {'betabinom_lr': betabinom_lr_test,
          'proportions': proportion_test}
 
 
-def _check_groups(transcriptome, groups, n_groups=2):
+def _check_groups(transcriptome: 'Transcriptome', groups, n_groups=2):
     assert len(groups) == n_groups, f"length of groups should be {n_groups}, but found {len(groups)}"
     # find groups and sample indices
     if isinstance(groups, dict):
@@ -155,8 +159,8 @@ def _check_groups(transcriptome, groups, n_groups=2):
     return groupnames, groups, grp_idx
 
 
-def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, min_sa=.51, test='auto', padj_method='fdr_bh',
-                   types=None, **kwargs):
+def altsplice_test(self: 'Transcriptome', groups, min_total=100, min_alt_fraction=.1, min_n=10, min_sa=.51, test='auto', padj_method='fdr_bh',
+                   types: Optional[list[ASEType]] = None, **kwargs):
     '''Performs the alternative splicing event test.
 
     :param groups: Dict with group names as keys and lists of sample names as values, defining the two groups for the test.
@@ -256,7 +260,7 @@ def altsplice_test(self, groups, min_total=100, min_alt_fraction=.1, min_n=10, m
     return df
 
 
-def die_test(self, groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', **kwargs):
+def die_test(self: 'Transcriptome', groups, min_cov=25, n_isoforms=10, padj_method='fdr_bh', **kwargs):
     ''' Reimplementation of the DIE test, suggested by Joglekar et al in Nat Commun 12, 463 (2021):
     "A spatially resolved brain region- and cell type-specific isoform atlas of the postnatal mouse brain"
 
@@ -455,7 +459,7 @@ def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_cove
     return df, {'ylabel': ylab, 'title': title}
 
 
-def transcript_length_hist(self=None, groups=None, add_reference=False, bins=50, x_range=(
+def transcript_length_hist(self: 'Transcriptome', groups=None, add_reference=False, bins=50, x_range=(
         0, 10000), weight_by_coverage=True, min_coverage=2, use_alignment=True, tr_filter={}, ref_filter={}):
     '''Retrieves the transcript length distribution.
 
@@ -748,15 +752,14 @@ def rarefaction(self, groups=None, fractions=20, min_coverage=2, tr_filter={}):
     return pd.DataFrame(curves, index=fractions), total
 
 
-def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
-                      events_dict=None, event_type=("ES", "5AS", "3AS", "IR", "ME"), padj_method="fdr_bh",
-                      **kwargs):
+def coordination_test(self: 'Transcriptome', samples=None, test: Literal['fisher', 'chi2'] = "fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
+                      events_dict=None, event_type: list[ASEType] = ("ES", "5AS", "3AS", "IR", "ME"), padj_method="fdr_bh",
+                      **kwargs) -> pd.DataFrame:
     '''Performs gene_coordination_test on all genes.
 
     :param samples: Specify the samples that should be considered in the test.
         The samples can be provided either as a single group name, a list of sample names, or a list of sample indices.
     :param test: Test to be performed. One of ("chi2", "fisher")
-    :type test: str
     :param min_dist: Minimum distance (in nucleotides) between the two Alternative Splicing Events for the pair to be tested
     :type min_dist: int
     :param min_total: The minimum total number of reads for an event to pass the filter
@@ -767,8 +770,7 @@ def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=1
     :type min_cov_pair: int
     :param events_dict: Pre-computed dictionary of alternative splicing events, to speed up analysis of several groups of samples of the same data set.
         Can be generated with the function _utils.precompute_events_dict.
-    :param event_type:  A tuple with event types to test. Valid types are ("ES","3AS", "5AS","IR" or "ME", "TSS", "PAS").
-        Default is ("ES", "5AS", "3AS", "IR", "ME")
+    :param event_type: A tuple with event types to test. Valid types are "ES", "3AS", "5AS", "IR", "ME", "TSS" and "PAS".
     :param padj_method: The multiple test adjustment method.
         Any value allowed by statsmodels.stats.multitest.multipletests (default: Benjamini-Hochberg)
     :param kwargs: Additional keyword arguments are passed to iter_genes.
@@ -790,17 +792,17 @@ def coordination_test(self, samples=None, test="fisher", min_dist=1, min_total=1
         events = events_dict.get(gene.id, []) if events_dict is not None else None
         try:
             next_test_res = gene.coordination_test(test=test, samples=samples, min_dist=min_dist, min_total=min_total,
-                                                min_alt_fraction=min_alt_fraction,
-                                                events=events, event_type=event_type)
+                                                   min_alt_fraction=min_alt_fraction,
+                                                   events=events, event_type=event_type)
             test_res.extend(next_test_res)
 
-        except Exception:
-            logger.error(f"\nError encounter on {print(gene)} {gene.id}   :  {gene.name}.")
-            raise
+        except Exception as e:
+            logger.error(f"\nError encountered on {print(gene)} {gene.id}   :  {gene.name}.")
+            raise e
 
-    col_names = ("gene_id", "gene_name", "strand", "eventA_type", "eventB_type", "eventA_start", "evemtA_end",
-                 "eventB_start", "eventB_end", "pvalue", "stat", "log2OR", "dcPSI_AB", "dcPSI_BA", "priA_priB", "priA_altB", "altA_priB",
-                 "altA_altB", "priA_priB_trID", "priA_altB_trID", "altA_priB_trID", "altA_altB_trID")
+    col_names = ("gene_id", "gene_name", "strand", "eventA_type", "eventB_type", "eventA_start", "eventA_end",
+                 "eventB_start", "eventB_end", "pvalue", "statistic", "log2OR", "dcPSI_AB", "dcPSI_BA", "priA_priB", "priA_altB", "altA_priB",
+                 "altA_altB", "priA_priB_transcript_ids", "priA_altB_transcript_ids", "altA_priB_transcript_ids", "altA_altB_transcript_ids")
 
     res = pd.DataFrame(test_res, columns=col_names)
 

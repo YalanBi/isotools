@@ -3,6 +3,11 @@ from tqdm import tqdm
 import logging
 import re
 from ._utils import _filter_function, DEFAULT_KOZAK_PWM
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .transcriptome import Transcriptome
+    from .gene import Gene
 
 logger = logging.getLogger('isotools')
 BOOL_OP = {'and', 'or', 'not', 'is'}
@@ -186,7 +191,7 @@ def add_filter(self, tag, expression, context='transcript', update=False):
     self.filter[context][tag] = expression
 
 
-def iter_genes(self, region=None, query=None, min_coverage=None, max_coverage=None, gois=None, progress_bar=False):
+def iter_genes(self: Transcriptome, region=None, query=None, min_coverage=None, max_coverage=None, gois=None, progress_bar=False):
     '''Iterates over the genes of a region, optionally applying filters.
 
     :param region: The region to be considered. Either a string "chr:start-end", or a tuple (chr, start, end). Start and end is optional.
@@ -297,7 +302,7 @@ def iter_transcripts(self, region=None, query=None, min_coverage=None, max_cover
                 yield gene, i, transcript
 
 
-def iter_ref_transcripts(self, region=None, query=None, genewise=False, gois=None, progress_bar=False):
+def iter_ref_transcripts(self: Transcriptome, region=None, query=None, genewise=False, gois=None, progress_bar=False):
     '''Iterates over the referemce transcripts of a region, optionally applying filters.
 
     :param region: The region to be considered. Either a string "chr:start-end", or a tuple (chr,start,end). Start and end is optional.
@@ -352,7 +357,7 @@ def _eval_filter_fun(fun, name, **args):
         # return False   #or continue
 
 
-def _filter_transcripts(gene, transcripts, query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
+def _filter_transcripts(gene: Gene, transcripts, query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
     ''' Iterator over the transcripts of the gene.
 
     Transcrips are specified by lists of flags submitted to the parameters.

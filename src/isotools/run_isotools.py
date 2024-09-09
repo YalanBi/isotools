@@ -158,7 +158,7 @@ def load_isoseq(args):
     return isoseq
 
 
-def filter_plots(isoseq, groups, filename, progress_bar):
+def filter_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('filter statistics plots')
     f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1, tr_filter={'progress_bar': progress_bar})
     plt.rcParams["figure.figsize"] = (15+5*len(groups), 7)
@@ -169,7 +169,7 @@ def filter_plots(isoseq, groups, filename, progress_bar):
     fig.savefig(filename)
 
 
-def transcript_plots(isoseq, groups, filename, progress_bar):
+def transcript_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('perparing summary of quality control metrics...')
     logger.info('1) Number of RTTS, fragmentation and internal priming artefacts')
     f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1,
@@ -206,7 +206,7 @@ def transcript_plots(isoseq, groups, filename, progress_bar):
     fig.savefig(filename)
 
 
-def altsplice_plots(isoseq, groups, filename, progress_bar):
+def altsplice_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('preparing novel splicing statistics...')
     altsplice = isoseq.altsplice_stats(groups=groups,  tr_filter=dict(query='not (RTTS or INTERNAL_PRIMING)', progress_bar=progress_bar))
 
@@ -218,7 +218,7 @@ def altsplice_plots(isoseq, groups, filename, progress_bar):
     fig.savefig(filename)
 
 
-def altsplice_examples(isoseq, n, query='not FSM'):  # return the top n covered genes for each category
+def altsplice_examples(isoseq: Transcriptome, n, query='not FSM'):  # return the top n covered genes for each category
     examples = {}
     for gene, transcript_ids, transcripts in isoseq.iter_transcripts(query=query, genewise=True):
         total_cov = gene.coverage.sum()
@@ -232,7 +232,7 @@ def altsplice_examples(isoseq, n, query='not FSM'):  # return the top n covered 
     return {k: v[:n] for k, v in examples.items()}
 
 
-def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, file_suffix, plot_type):
+def plot_altsplice_examples(isoseq: Transcriptome, groups, illu_groups, examples, file_prefix, file_suffix, plot_type):
     nplots = len(groups)+1
     # sample_idx = {r: i for i, r in enumerate(isoseq.infos['sample_table'].name)}
     if illu_groups:
@@ -301,7 +301,7 @@ def plot_altsplice_examples(isoseq, groups, illu_groups, examples, file_prefix, 
             plt.close()
 
 
-def plot_diffsplice(isoseq, de_tab, groups, illu_gr, file_prefix, plot_type):
+def plot_diffsplice(isoseq: Transcriptome, de_tab, groups, illu_gr, file_prefix, plot_type):
 
     nplots = len(groups)+1
     # sample_idx = {r: i for i, r in enumerate(isoseq.infos['sample_table'].name)}
@@ -335,7 +335,7 @@ def plot_diffsplice(isoseq, de_tab, groups, illu_gr, file_prefix, plot_type):
         plt.close(fig)
 
 
-def test_differential(isoseq, groups, illu_groups, args, file_suffix):
+def test_differential(isoseq: Transcriptome, groups, illu_groups, args, file_suffix):
     file_prefix = f'{args.file_prefix}_diff{file_suffix}'
     for diff_cmp in args.diff:
         gr = diff_cmp.split('/')

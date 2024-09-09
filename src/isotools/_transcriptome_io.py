@@ -28,7 +28,7 @@ logger = logging.getLogger('isotools')
 # io functions for the transcriptome class
 
 
-def add_short_read_coverage(self, bam_files, load=False):
+def add_short_read_coverage(self: Transcriptome, bam_files, load=False):
     '''Adds short read coverage to the genes.
 
     By default (e.g. if load==False), this method does not actually read the bams,
@@ -52,7 +52,7 @@ def add_short_read_coverage(self, bam_files, load=False):
                         gene.data['short_reads'].append(Coverage.from_alignment(align, gene))
 
 
-def remove_short_read_coverage(self):
+def remove_short_read_coverage(self: Transcriptome):
     '''Removes short read coverage.
 
     Removes all short read coverage information from self.'''
@@ -67,7 +67,7 @@ def remove_short_read_coverage(self):
 
 
 @experimental
-def remove_samples(self, sample_names):
+def remove_samples(self: Transcriptome, sample_names):
     ''' Removes samples from the dataset.
 
     :params sample_names: A list of sample names to remove.'''
@@ -91,8 +91,9 @@ def remove_samples(self, sample_names):
         gene.data['coverage'] = None
 
 
-def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id_col=None, sample_cov_cols=None, sample_properties=None, add_chromosomes=True,
-                        reconstruct_genes=True, fuzzy_junction=0, min_exonic_ref_coverage=.25, sep='\t'):
+def add_sample_from_csv(self: Transcriptome, coverage_csv_file, transcripts_file, transcript_id_col=None, sample_cov_cols=None,
+                        sample_properties=None, add_chromosomes=True, reconstruct_genes=True, fuzzy_junction=0,
+                        min_exonic_ref_coverage=.25, sep='\t'):
     '''Imports expressed transcripts from coverage table and gtf/gff file, and adds it to the 'Transcriptome' object.
 
     Transcript to gene assignment is either taken from the transcript_file, or recreated,
@@ -264,7 +265,7 @@ def add_sample_from_csv(self, coverage_csv_file, transcripts_file, transcript_id
     return id_map
 
 
-def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_junction=5, add_chromosomes=True, min_mapqual=0,
+def add_sample_from_bam(self: Transcriptome, fn, sample_name=None, barcode_file=None, fuzzy_junction=5, add_chromosomes=True, min_mapqual=0,
                         min_align_fraction=.75, chimeric_mincov=2, min_exonic_ref_coverage=.25, use_satag=False, save_readnames=False, progress_bar=True,
                         strictness=math.inf, **kwargs):
     '''Imports expressed transcripts from bam and adds it to the 'Transcriptome' object.
@@ -543,7 +544,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
     return total_nc_reads_chr
 
 
-def _add_chimeric(t, new_chimeric, min_cov, min_exonic_ref_coverage):
+def _add_chimeric(t: Transcriptome, new_chimeric, min_cov, min_exonic_ref_coverage):
     ''' add new chimeric transcripts to transcriptome, if covered by > min_cov reads
     '''
     total = {}
@@ -658,7 +659,7 @@ def _check_chimeric(chimeric):
     return chimeric_dict, non_chimeric
 
 
-def _add_sample_gene(transcriptome, gene_start, gene_end, gene_infos, transcript_list, chrom, novel_prefix):
+def _add_sample_gene(transcriptome: Transcriptome, gene_start, gene_end, gene_infos, transcript_list, chrom, novel_prefix):
     '''add new gene to existing gene in chrom - return gene on success and None if no Gene was found.
     For matching transcripts in gene, transcripts are merged. Coverage, transcript TSS/PAS need to be reset.
     Otherwise, a new transcripts are added. In this case, splice graph and coverage have to be reset.'''
@@ -829,7 +830,7 @@ def _get_novel_type(exons, genes_overlap, genes_overlap_strand):
         return {'intergenic': []}
 
 
-def _add_novel_genes(t, novel, chrom, spj_iou_th=0, reg_iou_th=.5, gene_prefix='PB_novel_'):
+def _add_novel_genes(t: Transcriptome, novel, chrom, spj_iou_th=0, reg_iou_th=.5, gene_prefix='PB_novel_'):
     '"novel" is a tree of transcript intervals (not Gene objects) ,e.g. from one chromosome, that do not overlap any annotated or unanntoated gene'
     n_novel = t.novel_genes
     idx = {id(transcript): i for i, transcript in enumerate(novel)}
@@ -1102,7 +1103,7 @@ def _read_gff_file(file_name, chromosomes, progress_bar=True):
     return exons, transcripts, genes, cds_start, cds_stop, skipped
 
 
-def import_ref_transcripts(fn, transcriptome, file_format, chromosomes=None, gene_categories=None, short_exon_th=25, **kwargs):
+def import_ref_transcripts(fn, transcriptome: Transcriptome, file_format, chromosomes=None, gene_categories=None, short_exon_th=25, **kwargs):
     '''import transcripts from gff/gtf file (e.g. for a reference)
     returns a dict interval trees for the genes'''
     if gene_categories is None:
@@ -1161,7 +1162,7 @@ def import_ref_transcripts(fn, transcriptome, file_format, chromosomes=None, gen
     return genes
 
 
-def collapse_immune_genes(self, maxgap=300000):
+def collapse_immune_genes(self: Transcriptome, maxgap=300000):
     ''' This function collapses annotation of immune genes (IG and TR) of a loci.
 
     As immune genes are so variable, classical annotation as a set of transcripts is not meaningfull for those genes.
@@ -1296,7 +1297,7 @@ def _set_alias(d, alias, required=True):
 
 
 # human readable output
-def gene_table(self, **filter_args):  # ideas: extra_columns
+def gene_table(self: Transcriptome, **filter_args):  # ideas: extra_columns
     '''Creates a gene summary table.
 
     Exports all genes within region to a table.
@@ -1309,7 +1310,7 @@ def gene_table(self, **filter_args):  # ideas: extra_columns
     return df
 
 
-def transcript_table(self,  samples=None,  groups=None, coverage=False, tpm=False, tpm_pseudocount=0, extra_columns=None,  **filter_args):
+def transcript_table(self: Transcriptome, samples=None, groups=None, coverage=False, tpm=False, tpm_pseudocount=0, extra_columns=None, **filter_args):
     '''Creates a transcript table.
 
     Exports all transcript isoforms within region to a table.
@@ -1398,7 +1399,7 @@ def transcript_table(self,  samples=None,  groups=None, coverage=False, tpm=Fals
 
 
 @ experimental
-def chimeric_table(self, region=None, query=None):  # , star_chimeric=None, illu_len=200):
+def chimeric_table(self: Transcriptome, region=None, query=None):  # , star_chimeric=None, illu_len=200):
     '''Creates a chimeric table
 
     This table contains relevant infos about breakpoints and coverage for chimeric genes.
@@ -1444,7 +1445,7 @@ def chimeric_table(self, region=None, query=None):  # , star_chimeric=None, illu
 #    return chim_tab
 
 
-def write_gtf(self, fn, source='isotools', gzip=False, **filter_args):
+def write_gtf(self: Transcriptome, fn, source='isotools', gzip=False, **filter_args):
     '''
     Exports the transcripts in gtf format to a file.
 
@@ -1468,7 +1469,7 @@ def write_gtf(self, fn, source='isotools', gzip=False, **filter_args):
             f.write('\n'.join(('\t'.join(str(field) for field in line) for line in lines)) + '\n')
 
 
-def export_alternative_splicing(self, out_dir, out_format='mats', reference=False, min_total=100,
+def export_alternative_splicing(self: Transcriptome, out_dir, out_format='mats', reference=False, min_total=100,
                                 min_alt_fraction=.1, samples=None, region=None, query=None, progress_bar=True):
     '''Exports alternative splicing events defined by the transcriptome.
 

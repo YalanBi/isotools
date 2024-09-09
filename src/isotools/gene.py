@@ -783,23 +783,22 @@ class Gene(Interval):
                     contained[j] = True
         return current
 
-    def coordination_test(self, samples=None, test="chi2", min_dist=1, min_total=100, min_alt_fraction=.1,
-                          events=None, event_type=("ES", "5AS", "3AS", "IR", "ME")):
+    def coordination_test(self, samples=None, test: Literal['fisher', 'chi2'] = "fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
+                          events=None, event_type=("ES", "5AS", "3AS", "IR", "ME")) -> list[tuple]:
         '''Performs pairwise independence test for all pairs of Alternative Splicing Events (ASEs) in a gene.
 
-        For all pairs of ASEs in a gene creates a contingency table and performs an indeppendence test.
+        For all pairs of ASEs in a gene creates a contingency table and performs an independence test.
         All ASEs A have two states, pri_A and alt_A, the primary and the alternative state respectivley.
         Thus, given two events A and B, we have four possible ways in which these events can occur on
         a transcript, that is, pri_A and pri_B, pri_A and alt_B, alt_A and pri_B, and alt_A and alt_B.
         These four values can be put in a contingency table and independence, or coordination,
         between the two events can be tested.
 
-        :param samples: Specify the samples that should be considdered in the test.
+        :param samples: Specify the samples that should be considered in the test.
             The samples can be provided either as a single group name, a list of sample names, or a list of sample indices.
         :param test: Test to be performed. One of ("chi2", "fisher")
         :type test: str
-        :param min_dist: Minimum distance (in nucleotides) between the two
-            alternative splicing events for the pair to be tested.
+        :param min_dist: Minimum distance (in nucleotides) between the two alternative splicing events for the pair to be tested.
         :type min_dist: int
         :param min_total: The minimum total number of reads for an event pair to pass the filter.
         :type min_total: int
@@ -832,8 +831,8 @@ class Gene(Interval):
         if events is None:
             events = sg.find_splice_bubbles(types=event_type)
 
-        events = [e for e in events if _filter_event(cov, e, min_total=min_total,
-                                                     min_alt_fraction=min_alt_fraction)]
+        events = [event for event in events if _filter_event(cov, event, min_total=min_total,
+                                                             min_alt_fraction=min_alt_fraction)]
         # make sure its sorted (according to gene strand)
         if self.strand == '+':
             events.sort(key=itemgetter(2, 3), reverse=False)  # sort by starting node

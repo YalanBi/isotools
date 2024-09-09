@@ -8,7 +8,22 @@ import builtins
 import logging
 from scipy.stats import chi2_contingency, fisher_exact
 import math
+from typing import Literal, TypeAlias, TYPE_CHECKING
 
+
+if TYPE_CHECKING:
+    from isotools.transcriptome import Transcriptome
+
+ASEType: TypeAlias = Literal['ES', '3AS', '5AS', 'IR', 'ME', 'TSS', 'PAS']
+ASEvent: TypeAlias = tuple[list[int], list[int], int, int, ASEType]
+'''
+In order:
+- transcripts supporting the primary event (the shorter path for the basic event types)
+- transcripts supporting the alternative event (the longer path for the basic event types)
+- node A id
+- node B id
+- event type
+'''
 
 # from Kozak et al, NAR, 1987
 kozak = np.array([[23, 35, 23, 19], [26, 35, 21, 18], [25, 35, 22, 18], [23, 26, 33, 18], [19, 39, 23, 19], [23, 37, 20, 20], [
@@ -395,7 +410,8 @@ def _find_splice_sites(splice_junctions, transcripts):
     return sites
 
 
-def precompute_events_dict(transcriptome, event_type=("ES", "5AS", "3AS", "IR", "ME"), min_cov=100, region=None,  query=None, progress_bar=True):
+def precompute_events_dict(transcriptome: 'Transcriptome', event_type: list[ASEType] = ("ES", "5AS", "3AS", "IR", "ME"),
+                           min_cov=100, region=None, query=None, progress_bar=True):
     '''
     Precomputes the events_dict, i.e. a dictionary of splice bubbles. Each key is a gene and each value is the splice bubbles
     object corresponding to that gene.
@@ -459,7 +475,7 @@ def prepare_contingency_table(eventA, eventB, coverage):
     return con_tab, transcript_id_table
 
 
-def pairwise_event_test(con_tab, test="fisher", pseudocount=.01):
+def pairwise_event_test(con_tab, test: Literal['fisher', 'chi2'] = "fisher", pseudocount=.01):
     '''
     Performs an independence test on the contingency table and computes effect sizes.
 
