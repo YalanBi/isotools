@@ -593,7 +593,7 @@ def _add_chimeric(t: Transcriptome, new_chimeric, min_cov, min_exonic_ref_covera
 
 def _breakpoints(chimeric):
     ''' gets chimeric aligment as a list and returns list of breakpoints.
-        each breakpoint is a tuple of (chr1, strand1, pos1,  chr2,strand2,pos2)
+        each breakpoint is a tuple of (chr1, strand1, pos1, chr2, strand2, pos2)
     '''
     return tuple((a[0], a[1], a[2][-1][1] if a[1] == '+' else a[2][0][0],
                   b[0], b[1], b[2][0][0] if b[1] == '+' else b[2][-1][1])
@@ -1160,6 +1160,23 @@ def import_ref_transcripts(fn, transcriptome: Transcriptome, file_format, chromo
                 if short_exons:
                     gene.data['reference']['short_exons'] = short_exons
     return genes
+
+
+def import_sqanti_classification(self: Transcriptome, path: str):
+    """
+    Import a SQANTI classification file.
+    See https://github.com/ConesaLab/SQANTI3/wiki/Understanding-the-output-of-SQANTI3-QC#classifcols
+    for details.
+    """
+    sqanti_df = pd.read_csv(path, sep='\t')
+    for _, row in tqdm(sqanti_df.iterrows(), total=len(sqanti_df)):
+        isoform = row['isoform']
+        gene_id = '_'.join(isoform.split('_')[:-1])
+        if gene_id not in self:
+            raise KeyError(f'Gene {gene_id} not found in transcriptome. Make sure you passed the correct SQANTI file')
+        gene = self[gene_id]
+        transcript_id = int(isoform.split('_')[-1])
+        gene.add_sqanti_classification(transcript_id, row)
 
 
 def collapse_immune_genes(self: Transcriptome, maxgap=300000):

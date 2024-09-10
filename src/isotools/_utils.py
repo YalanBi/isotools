@@ -289,7 +289,7 @@ def _filter_function(expression, context_filters = {}):
     return eval(f'lambda {",".join([arg+"=None" for arg in args]+["**kwargs"])}: bool({expression})\n', {}, {}), args
 
 
-def _interval_dist(a, b):
+def _interval_dist(a: tuple[int, int], b: tuple[int, int]):
     '''compute the distance between two intervals a and b.'''
     return max([a[0], b[0]])-min([a[1], b[1]])
 
@@ -454,7 +454,7 @@ def smooth(x, window_len=31):
     return y[int(window_len/2-(window_len+1) % 2):-int(window_len/2)]
 
 
-def prepare_contingency_table(eventA, eventB, coverage):
+def prepare_contingency_table(eventA: ASEvent, eventB: ASEvent, coverage):
     '''
     Prepare the read counts and transcript id contingency tables for two events.
 
@@ -503,7 +503,7 @@ def pairwise_event_test(con_tab, test: Literal['fisher', 'chi2'] = "fisher", pse
     dcPSI_AB, dcPSI_BA = dcPSI(con_tab)
     # delta conditional PSI is another measure of the effect size.
 
-    return p_value, test_stat, log2OR,  dcPSI_AB, dcPSI_BA
+    return p_value, test_stat, log2OR, dcPSI_AB, dcPSI_BA
 
 
 def _corrected_log2OR(con_tab):
@@ -519,7 +519,7 @@ def _corrected_log2OR(con_tab):
 
 
 def dcPSI(con_tab):
-    # delta conditional PSI of a coordinated event
+    '''delta conditional PSI of a coordinated event'''
     # 1) dcPSI_AB= PSI(B | altA) - PSI(B)
     dcPSI_AB = con_tab[1, 1]/con_tab[:, 1].sum()-con_tab[1, :].sum()/con_tab.sum(None)
     # 2) dcPSI_BA= PSI(A | altB) - PSI(A)

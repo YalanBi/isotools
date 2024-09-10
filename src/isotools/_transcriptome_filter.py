@@ -35,6 +35,10 @@ DEFAULT_TRANSCRIPT_FILTER = {
     'PERMISSIVE': 'gene.coverage.sum(0)[transcript_id] >= 2 and (FSM or not (RTTS or INTERNAL_PRIMING or FRAGMENT))',
     'BALANCED': 'gene.coverage.sum(0)[transcript_id] >= 2 and (FSM or (HIGH_COVER and not (RTTS or FRAGMENT or INTERNAL_PRIMING)))',
     'STRICT': 'gene.coverage.sum(0)[transcript_id] >= 7 and SUBSTANTIAL and (FSM or not (RTTS or FRAGMENT or INTERNAL_PRIMING))',
+    'CAGE_SUPPORT': 'sqanti_classification is not None and sqanti_classification["within_CAGE_peak"]',
+    'TSS_RATIO': 'sqanti_classification is not None and sqanti_classification["ratio_TSS"] > 1.5',
+    'POLYA_MOTIF': 'sqanti_classification is not None and sqanti_classification["polyA_motif_found"]',
+    'POLYA_SITE': 'sqanti_classification is not None and sqanti_classification["within_polyA_site"]',
 }
 
 SPLICE_CATEGORY = ['FSM', 'ISM', 'NIC', 'NNC', 'NOVEL']
@@ -191,7 +195,7 @@ def add_filter(self, tag, expression, context='transcript', update=False):
     self.filter[context][tag] = expression
 
 
-def iter_genes(self: Transcriptome, region=None, query=None, min_coverage=None, max_coverage=None, gois=None, progress_bar=False):
+def iter_genes(self: 'Transcriptome', region=None, query=None, min_coverage=None, max_coverage=None, gois=None, progress_bar=False):
     '''Iterates over the genes of a region, optionally applying filters.
 
     :param region: The region to be considered. Either a string "chr:start-end", or a tuple (chr, start, end). Start and end is optional.
@@ -254,7 +258,7 @@ def iter_genes(self: Transcriptome, region=None, query=None, min_coverage=None, 
             yield gene
 
 
-def iter_transcripts(self, region=None, query=None, min_coverage=None, max_coverage=None, genewise=False, gois=None, progress_bar=False):
+def iter_transcripts(self: 'Transcriptome', region=None, query=None, min_coverage=None, max_coverage=None, genewise=False, gois=None, progress_bar=False):
     '''Iterates over the transcripts of a region, optionally applying filters.
 
     By default, each iteration returns a 3 Tuple with the gene object, the transcript number and the transcript dictionary.
@@ -302,7 +306,7 @@ def iter_transcripts(self, region=None, query=None, min_coverage=None, max_cover
                 yield gene, i, transcript
 
 
-def iter_ref_transcripts(self: Transcriptome, region=None, query=None, genewise=False, gois=None, progress_bar=False):
+def iter_ref_transcripts(self: 'Transcriptome', region=None, query=None, genewise=False, gois=None, progress_bar=False):
     '''Iterates over the referemce transcripts of a region, optionally applying filters.
 
     :param region: The region to be considered. Either a string "chr:start-end", or a tuple (chr,start,end). Start and end is optional.
@@ -357,7 +361,7 @@ def _eval_filter_fun(fun, name, **args):
         # return False   #or continue
 
 
-def _filter_transcripts(gene: Gene, transcripts, query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
+def _filter_transcripts(gene: 'Gene', transcripts, query_fun, filter_fun, g_filter_eval, mincoverage=None, maxcoverage=None):
     ''' Iterator over the transcripts of the gene.
 
     Transcrips are specified by lists of flags submitted to the parameters.

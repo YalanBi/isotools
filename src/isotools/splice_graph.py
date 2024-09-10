@@ -110,7 +110,7 @@ class SegmentGraph():
         return exons
 
     @deprecated
-    def search_transcript2(self, exons):
+    def search_transcript2(self, exons: list[tuple[int, int]]):
         '''Tests if a transcript (provided as list of exons) is contained in self and return the corresponding transcript indices.
 
         :param exons: A list of exon tuples representing the transcript
@@ -145,7 +145,7 @@ class SegmentGraph():
             j += 1
         return [transcript_id for transcript_id in transcript]
 
-    def search_transcript(self, exons, complete=True, include_ends=False):
+    def search_transcript(self, exons: list[tuple[int, int]], complete=True, include_ends=False):
         '''Tests if a transcript (provided as list of exons) is contained in sg and return the corresponding transcript indices.
 
         Search the splice graph for transcripts that match the introns of the provided list of exons.
@@ -267,7 +267,7 @@ class SegmentGraph():
                     fragments.setdefault(transcript_id, []).append((big, delta1, delta2) if self.strand == '+' else (big, delta2, delta1))
         return fragments
 
-    def get_alternative_splicing(self, exons, alternative=None):
+    def get_alternative_splicing(self, exons: list[tuple[int, int]], alternative=None):
         '''Compares exons to segment graph and returns list of novel splicing events.
 
         This function computes the novelty class of the provided transcript compared to (reference annotation) transcripts
@@ -1021,7 +1021,7 @@ class SegmentGraph():
     def __len__(self):
         return len(self._graph)
 
-    def events_dist(self, event1, event2):
+    def events_dist(self, event1: ASEvent, event2: ASEvent):
         '''
         returns the distance (in nucleotides) between two Alternative Splicing Events.
 
@@ -1057,7 +1057,7 @@ class SegmentGraph():
                 return -1, None
         return -1, None
 
-    def _get_event_coordinate(self, event):
+    def _get_event_coordinate(self, event: ASEvent):
         if event[4] in ("TSS", "PAS"):
             return (self[event[2]].start, self[event[3]].end)
         else:

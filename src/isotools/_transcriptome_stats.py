@@ -754,7 +754,7 @@ def rarefaction(self, groups=None, fractions=20, min_coverage=2, tr_filter={}):
 
 def coordination_test(self: 'Transcriptome', samples=None, test: Literal['fisher', 'chi2'] = "fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
                       events_dict=None, event_type: list[ASEType] = ("ES", "5AS", "3AS", "IR", "ME"), padj_method="fdr_bh",
-                      **kwargs) -> pd.DataFrame:
+                      transcript_filter: Optional[str] = None, **kwargs) -> pd.DataFrame:
     '''Performs gene_coordination_test on all genes.
 
     :param samples: Specify the samples that should be considered in the test.
@@ -791,9 +791,16 @@ def coordination_test(self: 'Transcriptome', samples=None, test: Literal['fisher
     for gene in self.iter_genes(**kwargs):
         events = events_dict.get(gene.id, []) if events_dict is not None else None
         try:
-            next_test_res = gene.coordination_test(test=test, samples=samples, min_dist=min_dist, min_total=min_total,
-                                                   min_alt_fraction=min_alt_fraction,
-                                                   events=events, event_type=event_type)
+            next_test_res = gene.coordination_test(
+                test=test,
+                samples=samples,
+                min_dist=min_dist,
+                min_total=min_total,
+                min_alt_fraction=min_alt_fraction,
+                events=events,
+                event_type=event_type,
+                transcript_filter=transcript_filter,
+            )
             test_res.extend(next_test_res)
 
         except Exception as e:

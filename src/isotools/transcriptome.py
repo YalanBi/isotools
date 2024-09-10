@@ -252,7 +252,14 @@ class Transcriptome:
         remove_short_read_coverage, collapse_immune_genes
 
     # IO: output data as tables or other human readable format
-    from ._transcriptome_io import gene_table, transcript_table, chimeric_table, write_gtf, export_alternative_splicing
+    from ._transcriptome_io import (
+        gene_table,
+        transcript_table,
+        chimeric_table,
+        write_gtf,
+        export_alternative_splicing,
+        import_sqanti_classification,
+    )
 
     # filtering functionality and iterators
     from ._transcriptome_filter import add_qc_metrics, add_orf_prediction, add_filter, remove_filter, iter_genes, iter_transcripts, iter_ref_transcripts
