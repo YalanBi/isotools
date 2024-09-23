@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import logging
+import itertools
 from sortedcontainers import SortedDict  # for SpliceGraph
 from ._utils import pairwise, has_overlap, _interval_dist, ASEType, ASEvent
 from .decorators import deprecated, experimental
@@ -965,16 +966,11 @@ class SegmentGraph():
             pas_end[end2] = max(end1, pas_end.get(end2, end1))
         alt_types: list[ASEType] = ['PAS', 'TSS'] if self.strand == '-' else ['TSS', 'PAS']
         if alt_types[0] in types:
-            # find compatible alternatives: end after tss /start before pas
-            for node_id, transcript_set in tss.items():
-                alt_tr = [transcript_id for transcript_id, pas in enumerate(self._pas) if transcript_id not in transcript_set and pas > node_id]
-                if alt_tr:
-                    yield (alt_tr, list(transcript_set), tss_start[node_id], node_id, alt_types[0])
+            for (prim_node_id, prim_set), (alt_node_id, alt_set) in itertools.combinations(tss.items(), 2):
+                yield (list(prim_set), list(alt_set), tss_start[prim_node_id], tss_start[alt_node_id], alt_types[0])
         if alt_types[1] in types:
-            for node_id, transcript_set in pas.items():
-                alt_tr = [transcript_id for transcript_id, tss in enumerate(self._tss) if transcript_id not in transcript_set and tss < node_id]
-                if alt_tr:
-                    yield (alt_tr, list(transcript_set), node_id, pas_end[node_id], alt_types[1])
+            for (prim_node_id, prim_set), (alt_node_id, alt_set) in itertools.combinations(pas.items(), 2):
+                yield (list(prim_set), list(alt_set), pas_end[prim_node_id], pas_end[alt_node_id], alt_types[1])
 
     def is_exonic(self, position):
         '''Checks whether the position is within an exon.
@@ -1058,8 +1054,10 @@ class SegmentGraph():
         return -1, None
 
     def _get_event_coordinate(self, event: ASEvent):
-        if event[4] in ("TSS", "PAS"):
-            return (self[event[2]].start, self[event[3]].end)
+        if event[4] == "TSS":
+            return (self[event[2]].start, self[event[3]].start)
+        elif event[4] == "PAS":
+            return (self[event[2]].end, self[event[3]].end)
         else:
             return (self[event[2]].end, self[event[3]].start)
 

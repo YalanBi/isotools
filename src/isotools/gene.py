@@ -76,8 +76,10 @@ class ReferenceData(TypedDict, total=False):
     transcripts: list[RefTranscript]
 
 class GeneData(TypedDict, total=False):
+    ID: str
     name: str
     chr: str
+    strand: Literal['+', '-']
     short_reads: list[Coverage]
     coverage: np.ndarray
     reference: ReferenceData
