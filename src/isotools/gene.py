@@ -1091,6 +1091,28 @@ class Gene(Interval):
                 except AssertionError:
                     logger.error('%s TSS= %s, PAS=%s -> TSS_unified= %s, PAS_unified=%s', self, transcript['TSS'], transcript['PAS'],  transcript['TSS_unified'], transcript['PAS_unified'])
                     raise
+            self._TSS_correction(transcript)
+
+
+    def _TSS_correction(self, transcript: Transcript):
+        '''Correct TSS to the closest upstream reference TSS from best peak'''
+        if self.is_annotated:
+            if transcript['strand'] == '+':
+                tss = transcript['exons'][0][0]
+                ref_tsss = [ref_transcript['exons'][0][0] for ref_transcript in self.ref_transcripts if ref_transcript['exons'][0][0] <= tss]
+                if ref_tsss:
+                    old_tss = tss
+                    tss = max(ref_tsss)
+                    logger.debug(f'Corrected TSS ({transcript['strand']} strand) from {old_tss} to {tss}')
+                    transcript['exons'][0][0] = tss
+            else:
+                tss = transcript['exons'][-1][1]
+                ref_tsss = [ref_transcript['exons'][-1][1] for ref_transcript in self.ref_transcripts if ref_transcript['exons'][-1][1] >= tss]
+                if ref_tsss:
+                    old_tss = tss
+                    tss = min(ref_tsss)
+                    logger.debug(f'Corrected TSS ({transcript['strand']} strand) from {old_tss} to {tss}')
+                    transcript['exons'][-1][1] = tss
 
 
 def _coding_len(exons: list[tuple[int, int]], cds):
