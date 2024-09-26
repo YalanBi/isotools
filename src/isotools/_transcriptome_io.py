@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 # from numpy.lib.function_base import percentile, quantile
 import pandas as pd
@@ -9,15 +10,18 @@ from pysam import TabixFile, AlignmentFile, FastaFile
 from tqdm import tqdm
 from contextlib import ExitStack
 from .short_read import Coverage
-from typing import Generator
+from typing import Tuple, TYPE_CHECKING
 from ._utils import junctions_from_cigar, splice_identical, is_same_gene, has_overlap, get_overlap, pairwise, \
     cigar_string2tuples, rc, get_intersects, _find_splice_sites, _get_overlap, get_quantiles  # , _get_exonic_region
-from .gene import Gene
+from .gene import Gene, Transcript
 from .decorators import experimental
 import logging
 import gzip as gziplib
 from ._transcriptome_filter import SPLICE_CATEGORY
 import math
+
+if TYPE_CHECKING:
+    from .transcriptome import Transcriptome
 
 logger = logging.getLogger('isotools')
 
@@ -519,7 +523,7 @@ def add_sample_from_bam(self, fn, sample_name=None, barcode_file=None, fuzzy_jun
         except BaseException:
             logger.error('\n\n-->%s\n\n', (exons[0][0], exons[-1][1]) if strand == "+" else (exons[-1][1], exons[0][0]))
             raise
-        gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage, strictness=strictness)  # transcript is not updated
+        gene = _add_sample_transcript(self, transcript, chrom, fuzzy_junction, min_exonic_ref_coverage, strictness=strictness)
         if gene is None:
             novel.setdefault(chrom, []).append(transcript)
         for chrom in novel:
@@ -720,7 +724,7 @@ def _add_sample_gene(transcriptome, gene_start, gene_end, gene_infos, transcript
     return best_gene
 
 
-def _add_sample_transcript(transcriptome, transcript, chrom,  fuzzy_junction, min_exonic_ref_coverage, genes_overlap=None, strictness=math.inf):
+def _add_sample_transcript(transcriptome: Transcriptome, transcript: Transcript, chrom: str, fuzzy_junction: int, min_exonic_ref_coverage: float, genes_overlap=None, strictness=math.inf):
     '''add transcript to gene in chrom - return gene on success and None if no Gene was found.
     If matching transcript is found in gene, transcripts are merged. Coverage, transcript TSS/PAS need to be reset.
     Otherwise, a new transcript is added. In this case, splice graph and coverage have to be reset.'''
@@ -758,7 +762,8 @@ def _add_sample_transcript(transcriptome, transcript, chrom,  fuzzy_junction, mi
             # intersects might have changed due to fuzzy junctions
             # {'sj_i': sj_i, 'base_i':base_i,'category':SPLICE_CATEGORY[altsplice[1]],'subcategory':altsplice[1]}
 
-        else:  # add to existing novel (e.g. not in reference) gene
+        else:
+            # add to existing novel (e.g. not in reference) gene
             start, end = min(transcript['exons'][0][0], gene.start), max(transcript['exons'][-1][1], gene.end)
             transcript['annotation'] = (4, _get_novel_type(transcript['exons'], genes_overlap, genes_overlap_strand))
             if start < gene.start or end > gene.end:  # range of the novel gene might have changed
@@ -782,31 +787,32 @@ def _add_sample_transcript(transcriptome, transcript, chrom,  fuzzy_junction, mi
     return gene
 
 
-def _combine_transcripts(established, new_tr):
+def _combine_transcripts(established: Transcript, new_transcript: Transcript):
     'merge new_tr into splice identical established transcript'
     try:
-        for sample_name in new_tr['coverage']:
-            established['coverage'][sample_name] = established['coverage'].get(sample_name, 0) + new_tr['coverage'][sample_name]
-        for sample_name in new_tr.get('reads', {}):
-            established['reads'].setdefault(sample_name, []).extend(new_tr['reads'])
+        for sample_name in new_transcript['coverage']:
+            established['coverage'][sample_name] = established['coverage'].get(sample_name, 0) + new_transcript['coverage'][sample_name]
+        for sample_name in new_transcript.get('reads', {}):
+            established['reads'].setdefault(sample_name, []).extend(new_transcript['reads'])
         for side in 'TSS', 'PAS':
-            for sample_name in new_tr[side]:
-                for pos, cov in new_tr[side][sample_name].items():
+            for sample_name in new_transcript[side]:
+                for pos, cov in new_transcript[side][sample_name].items():
                     established[side].setdefault(sample_name, {}).setdefault(pos, 0)
                     established[side][sample_name][pos] += cov
         # find median tss and pas
-        starts = [v for sample in established['TSS'] for v in established['TSS'][sample].items()]
-        ends = [v for sample in established['PAS'] for v in established['PAS'][sample].items()]
+        starts = [pos for sample in established['TSS'] for pos in established['TSS'][sample].items()]
+        ends = [pos for sample in established['PAS'] for pos in established['PAS'][sample].items()]
         if established['strand'] == '-':
             starts, ends = ends, starts
+
         established['exons'][0][0] = get_quantiles(starts, [0.5])[0]
         established['exons'][-1][1] = get_quantiles(ends, [0.5])[0]
-        if 'long_intron_chimeric' in new_tr:
-            new_introns = set(new_tr['long_intron_chimeric'])
+        if 'long_intron_chimeric' in new_transcript:
+            new_introns = set(new_transcript['long_intron_chimeric'])
             established_introns = set(established.get('long_intron_chimeric', set()))
             established['long_intron_chimeric'] = tuple(new_introns.union(established_introns))
     except BaseException:
-        logger.error('error when merging %s into %s', new_tr, established)
+        logger.error('error when merging %s into %s', new_transcript, established)
         raise
 
 
@@ -863,76 +869,89 @@ def _add_novel_genes(t, novel, chrom, spj_iou_th=0, reg_iou_th=.5, gene_prefix='
     return novel_gene_list
 
 
-def _find_matching_gene(genes_overlap, exons, min_exon_coverage):
+def _find_matching_gene(genes_overlap: list[Gene], exons: list[Tuple[int, int]], min_exon_coverage: float):
     '''check the splice site intersect of all overlapping genes and return
             1) the gene with most shared splice sites,
             2) names of genes that cover additional splice sites, and
             3) splice sites that are not covered.
         If no splice site is shared (and for mono-exon genes) return the gene with largest exonic overlap
+        :param genes_ol: list of genes that overlap the transcript
+        :param exons: exon list of the transcript
         :param min_exon_coverage: minimum exonic coverage with genes that do not share splice sites to be considered'''
-    trlen = sum(e[1]-e[0] for e in exons)
-    splice_junctions = [(e1[1], e2[0]) for e1, e2 in pairwise(exons)]
+    transcript_len = sum(exon[1] - exon[0] for exon in exons)
+    splice_junctions = [(exon1[1], exon2[0]) for exon1, exon2 in pairwise(exons)]
     if genes_overlap:
         if len(exons) > 1:
             nomatch = np.zeros(len(splice_junctions) * 2, dtype=bool)
+            # Check reference transcript of reference genes first
             splice_sites = np.array([gene.ref_segment_graph.find_splice_sites(splice_junctions) if gene.is_annotated else nomatch for gene in genes_overlap])
-            sum_ol = splice_sites.sum(1)
+            sum_overlap = splice_sites.sum(1)
             # find index of reference gene that covers the most splice sites
-            # resolved issue with tie here, missing FSM due to overlappnig gene with extention of FSM transcript
-            covered_splice = np.max(sum_ol)
-            if covered_splice == 0:  # none found, consider novel genes
-                splice_sites = np.array([_find_splice_sites(splice_junctions,  gene.transcripts) if not gene.is_annotated else nomatch for gene in genes_overlap])
-                sum_ol = splice_sites.sum(1)
-                covered_splice = np.max(sum_ol)
+            # resolved issue with tie here, missing FSM due to overlapping gene with extension of FSM transcript
+            covered_splice = np.max(sum_overlap)
+            if covered_splice == 0:
+                # none found, consider novel genes
+                # TODO: Consider to replace this with gene.segment_graph.find_splice_sites(splice_junctions)
+                # since the graph is cached, this might be faster
+                splice_sites = np.array([_find_splice_sites(splice_junctions, gene.transcripts) if not gene.is_annotated else nomatch for gene in genes_overlap])
+                sum_overlap = splice_sites.sum(1)
+                covered_splice = np.max(sum_overlap)
             if covered_splice > 0:
-                best_idx = np.flatnonzero(sum_ol == covered_splice)
+                best_idx = np.flatnonzero(sum_overlap == covered_splice)
                 if len(best_idx > 1):  # handle ties
                     # find the transcript with the highest fraction of matching junctions
                     transcript_inter = []
                     for idx in best_idx:
-                        trlist = genes_overlap[idx].ref_transcripts if genes_overlap[idx].is_annotated else genes_overlap[idx].transcripts
-                        transcript_intersects = [(get_intersects(exons, transcript['exons'])) for transcript in trlist]
-                        transcript_intersects_fraction = [(ji/len(trlist[idx]['exons']), ei) for idx, (ji, ei) in enumerate(transcript_intersects)]
+                        transcript_list = genes_overlap[idx].ref_transcripts if genes_overlap[idx].is_annotated else genes_overlap[idx].transcripts
+                        transcript_intersects = [(get_intersects(exons, transcript['exons'])) for transcript in transcript_list]
+                        transcript_intersects_fraction = [(junction_intersection / len(transcript_list[idx]['exons']), exon_intersection)
+                                                          for idx, (junction_intersection, exon_intersection) in enumerate(transcript_intersects)]
                         transcript_inter.append(max(transcript_intersects_fraction))
-                    best_idx = best_idx[transcript_inter.index(max(transcript_inter))]
+                    best_idx = best_idx[np.argmax(transcript_inter, axis=0)[0]]
                 else:
                     best_idx = best_idx[0]
                 not_in_best = np.where(~splice_sites[best_idx])[0]
-                additional = splice_sites[:, not_in_best]  # additional= sites not covered by top gene
-                elsefound = [(gene.name, not_in_best[a]) for gene, a in zip(genes_overlap, additional) if a.sum() > 0]  # genes that cover additional splice sites
-                notfound = (splice_sites.sum(0) == 0).nonzero()[0].tolist()  # not covered splice sites
+                # sites not covered by top gene but in exons
+                additional = splice_sites[:, not_in_best]
+                # genes that cover additional splice sites
+                elsefound = [(gene.name, not_in_best[a]) for gene, a in zip(genes_overlap, additional) if a.sum() > 0]
+                # not covered splice sites
+                notfound = (splice_sites.sum(0) == 0).nonzero()[0].tolist()
                 return genes_overlap[best_idx], elsefound, notfound
             # no shared splice sites, return gene with largest overlap
             # first, check reference here:
-            # 1) if >50% ol with ref gene -> return best ref gene
-            ol = np.array([gene.ref_segment_graph.get_overlap(exons)[0] if gene.is_annotated else 0 for gene in genes_overlap])
-            best_idx = ol.argmax()
-            if ol[best_idx] >= min_exon_coverage * sum(e[1] - e[0] for e in exons):
+            # 1) if >50% overlap with ref gene -> return best ref gene
+            overlap = np.array([gene.ref_segment_graph.get_overlap(exons)[0] if gene.is_annotated else 0 for gene in genes_overlap])
+            best_idx = overlap.argmax()
+            if overlap[best_idx] >= min_exon_coverage * transcript_len:
                 return genes_overlap[best_idx], None, list(range((len(exons) - 1) * 2))
         else:
             # len(exons)==1 check all ref transcripts for monoexon gene with overlap>=50% (or min_exon_coverage)
-            ol = []
+            overlap = []
             for gene in genes_overlap:
-                ol_g = [get_overlap(exons[0], transcript['exons'][0]) for transcript in gene.ref_transcripts if len(transcript['exons']) == 1]
-                ol.append(max(ol_g, default=0))
-            best_idx = np.argmax(ol)
-            if ol[best_idx] >= min_exon_coverage * trlen:
+                overlap_gene = [get_overlap(exons[0], transcript['exons'][0]) for transcript in gene.ref_transcripts if len(transcript['exons']) == 1]
+                overlap.append(max(overlap_gene, default=0))
+            best_idx = np.argmax(overlap)
+            if overlap[best_idx] >= min_exon_coverage * transcript_len:
                 return genes_overlap[best_idx], None, []
         # else return best overlapping novel gene if more than minimum overlap fraction
-        ol = [(0, []) if not gene.is_annotated else gene.ref_segment_graph.get_overlap(exons) for gene in genes_overlap]
-        max_ol_frac = np.array([0 if ol[0] == 0 else max(ol_tr / min(trlen, sum(exon[1] - exon[0] for exon in transcript["exons"]))
-                                                         for ol_tr, transcript in zip(ol[1], gene.ref_transcripts)) for gene, ol in zip(genes_overlap, ol)])
-        best_idx = max_ol_frac.argmax()
-        if max_ol_frac[best_idx] >= min_exon_coverage:
+        overlap = [(0, []) if not gene.is_annotated else gene.ref_segment_graph.get_overlap(exons) for gene in genes_overlap]
+        max_overlap_frac = np.array([0 if overlap[0] == 0 else
+                                     max(overlap_transcript / min(transcript_len, sum(exon[1] - exon[0] for exon in transcript["exons"]))
+                                         for overlap_transcript, transcript in zip(overlap[1], gene.ref_transcripts))
+                                     for gene, overlap in zip(genes_overlap, overlap)])
+        best_idx = max_overlap_frac.argmax()
+        if max_overlap_frac[best_idx] >= min_exon_coverage:
             return genes_overlap[best_idx], None, list(range((len(exons) - 1) * 2))  # none of the junctions are covered
         # else return best overlapping novel gene if more than minimum overlap fraction
-        ol = [0 if gene.is_annotated else _get_overlap(exons, gene.transcripts) for gene in genes_overlap]
-        max_ol_frac = np.array([0 if ol == 0 else ol_gene / trlen for ol_gene in ol])
-        best_idx = max_ol_frac.argmax()
-        if max_ol_frac[best_idx] >= min_exon_coverage:
+        overlap = [0 if gene.is_annotated else _get_overlap(exons, gene.transcripts) for gene in genes_overlap]
+        max_overlap_frac = np.array([0 if overlap == 0 else overlap_gene / transcript_len for overlap_gene in overlap])
+        best_idx = max_overlap_frac.argmax()
+        if max_overlap_frac[best_idx] >= min_exon_coverage:
             return genes_overlap[best_idx], None, list(range((len(exons) - 1) * 2))  # none of the junctions are covered
-        # TODO: Issue: order matters here, if more than one novel gene with >50%ol, join them all?)
-    return None, None, list(range((len(exons) - 1) * 2))  # none of the junctions are covered
+        # TODO: Issue: order matters here, if more than one novel gene with >50%overlap, join them all?)
+    # none of the junctions are covered
+    return None, None, list(range((len(exons) - 1) * 2))
 
 
 def _read_gtf_file(file_name, chromosomes, infer_genes=False, progress_bar=True):
@@ -1656,10 +1675,10 @@ class IntervalArray:
 
     def __init__(self, total_size, bin_size=1e4):
         self.obj: dict[str, Interval] = {}
-        self.data = [set() for _ in range(int((total_size) // bin_size) + 1)]
+        self.data: list[set[int]] = [set() for _ in range(int((total_size) // bin_size) + 1)]
         self.bin_size = bin_size
 
-    def overlap(self, begin, end) -> Generator[Interval, None, None]:
+    def overlap(self, begin, end):
         try:
             candidates = {obj_id
                           for idx in range(int(begin // self.bin_size), int(end // self.bin_size) + 1)

@@ -1,9 +1,10 @@
+from __future__ import annotations
 import numpy as np
 import logging
 from sortedcontainers import SortedDict  # for SpliceGraph
 from ._utils import pairwise, has_overlap, _interval_dist
 from .decorators import deprecated, experimental
-from typing import Union
+from typing import List, Literal, Union
 
 logger = logging.getLogger('isotools')
 
@@ -19,6 +20,13 @@ class SegmentGraph():
     :param transcripts: A list of transcripts, which are lists of exons, which in turn are (start,end) tuples
     :type transcripts: list
     :param strand: the strand of the gene, either "+" or "-"'''
+
+    strand: Literal['+', '-']
+    _graph: List[SegGraphNode]
+    _tss: List[int]
+    "The start positions of the nodes. TODO: Name is misleading. If the strand is '-', this is actually the PAS."
+    _pas: List[int]
+    "The end positions of the nodes. TODO: Name is misleading. If the strand is '-', this is actually the TSS."
 
     def __init__(self, transcripts, strand):
         self.strand = strand
@@ -40,7 +48,7 @@ class SegmentGraph():
         # get the links
         start_idx = {node.start: i for i, node in enumerate(self._graph)}
         end_idx = {node.end: i for i, node in enumerate(self._graph)}
-        self._tss = [start_idx[exon[0][0]] for exon in transcripts]  # todo: this is missleading: on - strand this would not be the tss
+        self._tss = [start_idx[exon[0][0]] for exon in transcripts]
         self._pas = [end_idx[exon[-1][1]] for exon in transcripts]
 
         for i, transcript in enumerate(transcripts):
@@ -504,44 +512,38 @@ class SegmentGraph():
                     fuzzy[i] = sorted(shift, key=abs)[0]  # if there are several possible shifts, provide the smallest
         return fuzzy
 
-    def find_splice_sites(self, sj):
+    def find_splice_sites(self, splice_junctions: list[tuple[int, int]]):
         '''Checks whether the splice sites of a new transcript are present in the segment graph.
 
-        :param sj: A list of 2 tuples with the splice site positions
-        :type exons: list
+        :param splice_junctions: A list of 2-tuples with the splice site positions
         :return: boolean array indicating whether the splice site is contained or not'''
 
-        sites = np.zeros(len(sj) * 2, dtype=bool)
-        nodes = iter(self)
-        n = next(nodes)
+        sites = np.zeros(len(splice_junctions) * 2, dtype=bool)
         splice_junction_starts = {}
         splice_junction_ends = {}
-        for i, ss in enumerate(sj):
-            splice_junction_starts.setdefault(ss[0], []).append(i)
-            splice_junction_ends.setdefault(ss[1], []).append(i)
+        for i, splice_junction in enumerate(splice_junctions):
+            splice_junction_starts.setdefault(splice_junction[0], []).append(i)
+            splice_junction_ends.setdefault(splice_junction[1], []).append(i)
 
         # check exon ends
         for splice_junction_start, idx in sorted(splice_junction_starts.items()):
-            try:
-                while splice_junction_start > n.end:
-                    n = next(nodes)
-                if n.end == splice_junction_start and any(self[s].start > n.end for s in n.suc.values()):
-                    for i in idx:
-                        sites[i * 2] = True
-            except StopIteration:
-                break
-        nodes = iter(self)
-        n = next(nodes)
+            node = self._get_node_ending_at(splice_junction_start)
+            if node is None:
+                continue
+            # Check if there is a true splice site behind
+            if any(self[s].start > node.end for s in node.suc.values()):
+                for i in idx:
+                    sites[i * 2] = True
+
         # check exon starts
         for splice_junction_end, idx in sorted(splice_junction_ends.items()):
-            try:
-                while splice_junction_end > n.start:
-                    n = next(nodes)
-                if n.start == splice_junction_end and any(self[p].end < n.start for p in n.pre.values()):
-                    for i in idx:
-                        sites[i * 2 + 1] = True
-            except StopIteration:
-                break
+            node = self._get_node_starting_at(splice_junction_end)
+            if node is None:
+                continue
+            # Check if there is a true splice site in front
+            if any(self[p].end < node.start for p in node.pre.values()):
+                for i in idx:
+                    sites[i * 2 + 1] = True
         return sites
 
     def get_overlap(self, exons):
@@ -994,7 +996,7 @@ class SegmentGraph():
                 exons.append([self[n].start, self[n].end])
         return [tuple(e) for e in exons]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: int):
         return self._graph[key]
 
     def __len__(self):
@@ -1015,21 +1017,25 @@ class SegmentGraph():
 
         return _interval_dist(e1_coor, e2_coor)
 
-    def _get_node_starting_at(self, coordinate):
+    def _get_node_starting_at(self, coordinate: int):
         '''
-        return the index of the node in the splice graph starting at the given coordinate.
+        return the node in the splice graph starting at the given coordinate.
         '''
-        for i, node in enumerate(self):
+        for node in self:
             if node.start == coordinate:
-                return i
+                return node
+            if node.start > coordinate:
+                return None
 
-    def _get_node_ending_at(self, coordinate):
+    def _get_node_ending_at(self, coordinate: int):
         '''
-        return the index of the node in the splice graph ending at the given coordinate.
+        return the node in the splice graph ending at the given coordinate.
         '''
-        for i, node in enumerate(self):
+        for node in self:
             if node.end == coordinate:
-                return i
+                return node
+            if node.end > coordinate:
+                return None
 
     def _get_event_coordinate(self, event):
         if event[4] in ("TSS", "PAS"):

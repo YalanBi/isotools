@@ -1,3 +1,4 @@
+from __future__ import annotations
 from operator import itemgetter
 from intervaltree import Interval
 from collections.abc import Iterable
@@ -15,20 +16,73 @@ from .short_read import Coverage
 from ._transcriptome_filter import SPLICE_CATEGORY
 from ._utils import pairwise, _filter_event, find_orfs, DEFAULT_KOZAK_PWM, kozak_score, smooth, get_quantiles, \
     _filter_function, pairwise_event_test, prepare_contingency_table, cmp_dist
+from typing import Any, Literal, TypedDict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .transcriptome import Transcriptome
 
 import logging
 logger = logging.getLogger('isotools')
 
 
+class Transcript(TypedDict, total=False):
+    chr: str
+    strand: Literal['+', '-']
+    exons: list[tuple[int, int]]
+    coverage: dict[str, int]
+    'The coverage of the transcript in each sample.'
+    TSS: dict[str, dict[int, int]]
+    'The TSS of each sample with their coverage.'
+    PAS: dict[str, dict[int, int]]
+    'The PAS of each sample with their coverage.'
+    clipping: dict[str, dict[str, int]]
+    annotation: tuple[int, dict[str, Any]] # TODO: Switch the dict to a TypedDict, Replace novelty with Enum
+    'The annotation of the transcript. The first element is the novelty class, the second a dictionary with the subcategories.'
+    reads: list[str]
+    'TODO: This seems to be inconsistent. Sometimes it is a list of read names, sometimes a dict with sample names as keys and the lists as values.'
+    novel_splice_sites: list[int]
+    TSS_unified: dict[str, dict[int, int]]
+    PAS_unified: dict[str, dict[int, int]]
+    direct_repeat_len: list[int]
+    downstream_A_content: float
+    long_intron_chimeric: Any
+    CDS: tuple[int, int]
+    ORF: tuple[int, int, dict[str, Any]]
+    fuzzy_junction: Any
+
+class RefTranscript:
+    transcript_id: str
+    transcript_type: str
+    transcript_name: str
+    transcript_support_level: str
+    exons: list[tuple[int, int]]
+    CDS: tuple[int, int]
+
+class ReferenceData(TypedDict, total=False):
+    segment_graph: SegmentGraph
+    transcripts: list[RefTranscript]
+
+class GeneData(TypedDict, total=False):
+    name: str
+    chr: str
+    short_reads: list[Coverage]
+    coverage: np.ndarray
+    reference: ReferenceData
+    segment_graph: SegmentGraph
+    transcripts: list[Transcript]
+
 class Gene(Interval):
     'This class stores all gene information and transcripts. It is derived from intervaltree.Interval.'
     required_infos = ['ID', 'chr', 'strand']
 
+    data: GeneData
+    _transcriptome: 'Transcriptome'
+
     # initialization
-    def __new__(cls, begin, end, data, transcriptome):
+    def __new__(cls, begin, end, data: GeneData, transcriptome):
         return super().__new__(cls, begin, end, data)  # required as Interval (and Gene) is immutable
 
-    def __init__(self, begin, end, data, transcriptome):
+    def __init__(self, begin, end, data: GeneData, transcriptome: Transcriptome):
         self._transcriptome = transcriptome
 
     def __str__(self):
@@ -48,9 +102,10 @@ class Gene(Interval):
         :returns: The short read coverage profile.'''
 
         try:
+            # raises key_error if no short reads added
             return self.data['short_reads'][idx]
         except (KeyError, IndexError):
-            srdf = self._transcriptome.infos['short_reads']  # raises key_error if no short reads added
+            srdf = self._transcriptome.infos['short_reads']
             self.data.setdefault('short_reads', [])
             for i in range(len(self.data['short_reads']), len(srdf)):
                 self.data['short_reads'].append(Coverage.from_bam(srdf.file[i], self))
@@ -609,7 +664,7 @@ class Gene(Interval):
         return self.data['strand']
 
     @property
-    def transcripts(self):
+    def transcripts(self) -> list[Transcript]:
         '''Returns the list of transcripts of the gene, as found by LRTS.'''
         try:
             return self.data['transcripts']
@@ -617,7 +672,7 @@ class Gene(Interval):
             return []
 
     @property
-    def ref_transcripts(self):
+    def ref_transcripts(self) -> list[Transcript]:
         '''Returns the list of reference transcripts of the gene.'''
         try:
             return self.data['reference']['transcripts']

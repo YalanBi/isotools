@@ -4,7 +4,7 @@ import logging
 import re
 from intervaltree import IntervalTree  # , Interval
 import pandas as pd
-from typing import Optional
+from typing import Optional, TypedDict
 from ._transcriptome_io import import_ref_transcripts
 from .gene import Gene
 from ._transcriptome_filter import DEFAULT_GENE_FILTER, DEFAULT_TRANSCRIPT_FILTER, DEFAULT_REF_TRANSCRIPT_FILTER, ANNOTATION_VOCABULARY, SPLICE_CATEGORY
@@ -19,15 +19,22 @@ logger = logging.getLogger('isotools')
 # _transcriptome_filter.py (gene/transcript iteration and filtering)
 
 
+class FilterData(TypedDict):
+    gene: dict[str, str]
+    transcript: dict[str, str]
+    reference: dict[str, str]
+
+
 class Transcriptome:
     '''Contains sequencing data and annotation for Long Read Transcriptome Sequencing (LRTS) Experiments.
     '''
     # initialization and save/restore data
 
     data: dict[str, IntervalTree[Gene]]
+    'One IntervalTree of Genes for each chromosome.'
     infos: dict
     chimeric: dict
-    filter: dict
+    filter: FilterData
     _idx: dict[str, Gene]
 
     def __init__(self, data: Optional[dict[str, IntervalTree[Gene]]] = None, infos = dict(), chimeric = dict(), filter = dict()):
@@ -41,11 +48,10 @@ class Transcriptome:
             self.make_index()
 
     @classmethod
-    def from_reference(cls, reference_file, file_format='auto', **kwargs):
+    def from_reference(cls, reference_file: str, file_format='auto', **kwargs):
         '''Creates a Transcriptome object by importing reference annotation.
 
         :param reference_file: Reference file in gff3 format or pickle file to restore previously imported annotation
-        :type reference_file: str
         :param file_format: Specify the file format of the provided reference_file.
             If set to "auto" the file type is inferred from the extension.
         :param chromosome: If reference file is gtf/gff, restrict import on specified chromosomes '''
