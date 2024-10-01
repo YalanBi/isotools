@@ -310,7 +310,7 @@ class SegmentGraph():
                 self[j1].start <= exons[0][0]):  # start of first exon is exonic in ref
             j0 = max(self._tss[transcript_id] for transcript_id in self[j1].pre)  # j0 is the closest start node
             if any(self[j].end < self[j + 1].start for j in range(j0, j1)):  # assure there is an intron between closest tss/pas and exon
-                end = '3' if is_reverse else '5'
+                end = '5' if is_reverse else '3'
                 altsplice.setdefault(f'{end}\' fragment', []).append([self[j0].start, exons[0][0]])  # at start (lower position)
 
         for i, ex1 in enumerate(exons):
@@ -343,7 +343,7 @@ class SegmentGraph():
                 logger.error('\n'.join([str(exons), str(self._pas), str((j1, j2)), str([(j, n) for j, n in enumerate(self)])]))
                 raise
             if any(self[j].end < self[j + 1].start for j in range(j2, j3)):  # assure there is an intron between closest tss/pas and exon
-                end = '5' if is_reverse else '3'
+                end = '3' if is_reverse else '5'
                 altsplice.setdefault(f'{end}\' fragment', []).append([exons[-1][1], self[j3].end])
 
         if not altsplice:  # all junctions are contained but not all in one transcript
