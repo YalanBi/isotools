@@ -101,7 +101,7 @@ def add_orf_prediction(self, genome_fn, progress_bar=True, filter_transcripts={}
                                   get_fickett=fickett_score, kozak_matrix=kozak_matrix, coding_hexamers=coding, noncoding_hexamers=noncoding)
 
 
-def add_qc_metrics(self, genome_fn, progress_bar=True, downstream_a_len=30, direct_repeat_wd=15, direct_repeat_wobble=2, direct_repeat_mm=2,
+def add_qc_metrics(self: Transcriptome, genome_fn: str, progress_bar=True, downstream_a_len=30, direct_repeat_wd=15, direct_repeat_wobble=2, direct_repeat_mm=2,
                    unify_ends=True):
     ''' Retrieves QC metrics for the transcripts.
 

@@ -513,7 +513,7 @@ class Gene(Interval):
         '''Checks for transcripts that are fully contained in other transcripts.
 
         Transcripts that are fully contained in other transcripts are potential truncations.
-        This function populates the 'fragment' filed of the transcript dictionaries with the indices of the containing transcripts,
+        This function populates the 'fragment' field of the transcript dictionaries with the indices of the containing transcripts,
         and the exon ids that match the first and last exons.'''
 
         for transcript_id, containers in self.segment_graph.find_fragments().items():
