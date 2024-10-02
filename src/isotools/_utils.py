@@ -490,14 +490,14 @@ def pairwise_event_test(con_tab, test: Literal['fisher', 'chi2'] = "fisher", pse
     else:
         raise (ValueError('test should be "chi2" or "fisher"'))
 
-    test_res = test_fun(con_tab+pseudocount)  # add some small value (TODO: is this also for fisher test?)
+    # add some small value for chi2
+    # TODO: inconsistency: test_stat is the odds ratio for the fisher test and X^2 for the chisq test
+    test_stat, p_value = test_fun(con_tab + pseudocount if test == "chi2" else con_tab)
 
     # priA_priB_trID, altA_altB_trID = tr_ID_tab[0, 0], tr_ID_tab[1, 1]
     # priA_altB_trID, altA_priB_trID = tr_ID_tab[1, 0], tr_ID_tab[0, 1]
     # priA_priB, altA_altB = con_tab[0, 0], con_tab[1, 1]
     # priA_altB, altA_priB = con_tab[1, 0], con_tab[0, 1]
-    p_value = test_res[1]
-    test_stat = test_res[0]  # TODO: inconsistancy: this is the odds ratio for the fisher test and X^2 for the chisq test
     log2OR = _corrected_log2OR(con_tab)
     # logOR is a measure of the effect size. coordination between the events is either positive or negative.
     dcPSI_AB, dcPSI_BA = dcPSI(con_tab)
