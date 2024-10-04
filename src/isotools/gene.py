@@ -1,3 +1,4 @@
+from __future__ import annotations
 from operator import itemgetter
 from intervaltree import Interval
 from collections.abc import Iterable
@@ -15,20 +16,88 @@ from .short_read import Coverage
 from ._transcriptome_filter import SPLICE_CATEGORY
 from ._utils import pairwise, _filter_event, find_orfs, DEFAULT_KOZAK_PWM, kozak_score, smooth, get_quantiles, \
     _filter_function, pairwise_event_test, prepare_contingency_table, cmp_dist
+from typing import Any, Literal, Optional, TypedDict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .transcriptome import Transcriptome
+    from pandas import Series
+    from ._utils import ASEvent
 
 import logging
 logger = logging.getLogger('isotools')
 
 
+class SQANTI_classification(TypedDict):
+    dist_to_CAGE_peak: int
+    within_CAGE_peak: bool
+    dist_to_polyA_site: int
+    within_polyA_site: bool
+    polyA_motif: str
+    polyA_dist: int
+    polyA_motif_found: bool
+    ratio_TSS: float
+
+class Transcript(TypedDict, total=False):
+    chr: str
+    strand: Literal['+', '-']
+    exons: list[tuple[int, int]]
+    coverage: dict[str, int]
+    'The coverage of the transcript in each sample.'
+    TSS: dict[str, dict[int, int]]
+    'The TSS of each sample with their coverage.'
+    PAS: dict[str, dict[int, int]]
+    'The PAS of each sample with their coverage.'
+    clipping: dict[str, dict[str, int]]
+    annotation: tuple[int, dict[str, Any]] # TODO: Switch the dict to a TypedDict, Replace novelty with Enum
+    "The annotation of the transcript. The first element is the novelty class (0=FSM,1=ISM,2=NIC,3=NNC,4=Novel gene), the second a dictionary with the subcategories."
+    reads: list[str]
+    'TODO: This seems to be inconsistent. Sometimes it is a list of read names, sometimes a dict with sample names as keys and the lists as values.'
+    novel_splice_sites: list[int]
+    TSS_unified: dict[str, dict[int, int]]
+    PAS_unified: dict[str, dict[int, int]]
+    direct_repeat_len: list[int]
+    downstream_A_content: float
+    long_intron_chimeric: Any
+    CDS: tuple[int, int]
+    ORF: tuple[int, int, dict[str, Any]]
+    fuzzy_junction: Any
+    sqanti_classification: SQANTI_classification
+
+class RefTranscript(TypedDict, total=False):
+    transcript_id: str
+    transcript_type: str
+    transcript_name: str
+    transcript_support_level: str
+    exons: list[tuple[int, int]]
+    CDS: tuple[int, int]
+
+class ReferenceData(TypedDict, total=False):
+    segment_graph: SegmentGraph
+    transcripts: list[RefTranscript]
+
+class GeneData(TypedDict, total=False):
+    ID: str
+    name: str
+    chr: str
+    strand: Literal['+', '-']
+    short_reads: list[Coverage]
+    coverage: np.ndarray
+    reference: ReferenceData
+    segment_graph: SegmentGraph
+    transcripts: list[Transcript]
+
 class Gene(Interval):
     'This class stores all gene information and transcripts. It is derived from intervaltree.Interval.'
     required_infos = ['ID', 'chr', 'strand']
 
+    data: GeneData
+    _transcriptome: 'Transcriptome'
+
     # initialization
-    def __new__(cls, begin, end, data, transcriptome):
+    def __new__(cls, begin, end, data: GeneData, transcriptome):
         return super().__new__(cls, begin, end, data)  # required as Interval (and Gene) is immutable
 
-    def __init__(self, begin, end, data, transcriptome):
+    def __init__(self, begin, end, data: GeneData, transcriptome: Transcriptome):
         self._transcriptome = transcriptome
 
     def __str__(self):
@@ -48,9 +117,10 @@ class Gene(Interval):
         :returns: The short read coverage profile.'''
 
         try:
+            # raises key_error if no short reads added
             return self.data['short_reads'][idx]
         except (KeyError, IndexError):
-            srdf = self._transcriptome.infos['short_reads']  # raises key_error if no short reads added
+            srdf = self._transcriptome.infos['short_reads']
             self.data.setdefault('short_reads', [])
             for i in range(len(self.data['short_reads']), len(srdf)):
                 self.data['short_reads'].append(Coverage.from_bam(srdf.file[i], self))
@@ -243,6 +313,20 @@ class Gene(Interval):
                     a_content[pos] = seq.upper().count('T') / length
             transcript['downstream_A_content'] = a_content[pos]
 
+    def add_sqanti_classification(self, transcript_id: int, classification_row: Series):
+        assert transcript_id < self.n_transcripts, f'Transcript id {transcript_id} not found in gene {self.id}'
+        infos = classification_row[[
+            'dist_to_CAGE_peak',
+            'within_CAGE_peak',
+            'dist_to_polyA_site',
+            'within_polyA_site',
+            'polyA_motif',
+            'polyA_dist',
+            'polyA_motif_found',
+            'ratio_TSS'
+        ]].to_dict()
+        self.transcripts[transcript_id]['sqanti_classification'] = infos
+
     def get_sequence(self, genome_fh, transcript_ids=None, reference=False, protein=False):
         '''Returns the nucleotide sequence of the specified transcripts.
 
@@ -429,7 +513,7 @@ class Gene(Interval):
         '''Checks for transcripts that are fully contained in other transcripts.
 
         Transcripts that are fully contained in other transcripts are potential truncations.
-        This function populates the 'fragment' filed of the transcript dictionaries with the indices of the containing transcripts,
+        This function populates the 'fragment' field of the transcript dictionaries with the indices of the containing transcripts,
         and the exon ids that match the first and last exons.'''
 
         for transcript_id, containers in self.segment_graph.find_fragments().items():
@@ -609,7 +693,7 @@ class Gene(Interval):
         return self.data['strand']
 
     @property
-    def transcripts(self):
+    def transcripts(self) -> list[Transcript]:
         '''Returns the list of transcripts of the gene, as found by LRTS.'''
         try:
             return self.data['transcripts']
@@ -617,7 +701,7 @@ class Gene(Interval):
             return []
 
     @property
-    def ref_transcripts(self):
+    def ref_transcripts(self) -> list[Transcript]:
         '''Returns the list of reference transcripts of the gene.'''
         try:
             return self.data['reference']['transcripts']
@@ -655,6 +739,12 @@ class Gene(Interval):
                 logger.error('Error initializing Segment Graph on %s with exons %s', self.strand, transcript_exons)
                 raise
         return self.data['segment_graph']
+
+    def segment_graph_filtered(self, query=None, min_coverage=None, max_coverage=None):
+        '''Returns a filtered segment graph of the LRTS transcripts for the gene'''
+        transcript_ids = self.filter_transcripts(query, min_coverage, max_coverage)
+        transcript_exons = [transcript['exons'] for i, transcript in enumerate(self.transcripts) if i in transcript_ids]
+        return SegmentGraph(transcript_exons, self.strand)
 
     def __copy__(self):
         return Gene(self.start, self.end, self.data, self._transcriptome)
@@ -728,23 +818,23 @@ class Gene(Interval):
                     contained[j] = True
         return current
 
-    def coordination_test(self, samples=None, test="chi2", min_dist=1, min_total=100, min_alt_fraction=.1,
-                          events=None, event_type=("ES", "5AS", "3AS", "IR", "ME")):
+    def coordination_test(self, samples=None, test: Literal['fisher', 'chi2'] = "fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
+                          events: Optional[list[ASEvent]] = None, event_type=("ES", "5AS", "3AS", "IR", "ME"),
+                          transcript_filter: Optional[str] = None) -> list[tuple]:
         '''Performs pairwise independence test for all pairs of Alternative Splicing Events (ASEs) in a gene.
 
-        For all pairs of ASEs in a gene creates a contingency table and performs an indeppendence test.
+        For all pairs of ASEs in a gene creates a contingency table and performs an independence test.
         All ASEs A have two states, pri_A and alt_A, the primary and the alternative state respectivley.
         Thus, given two events A and B, we have four possible ways in which these events can occur on
         a transcript, that is, pri_A and pri_B, pri_A and alt_B, alt_A and pri_B, and alt_A and alt_B.
         These four values can be put in a contingency table and independence, or coordination,
         between the two events can be tested.
 
-        :param samples: Specify the samples that should be considdered in the test.
+        :param samples: Specify the samples that should be considered in the test.
             The samples can be provided either as a single group name, a list of sample names, or a list of sample indices.
         :param test: Test to be performed. One of ("chi2", "fisher")
         :type test: str
-        :param min_dist: Minimum distance (in nucleotides) between the two
-            alternative splicing events for the pair to be tested.
+        :param min_dist: Minimum distance (in nucleotides) between the two alternative splicing events for the pair to be tested.
         :type min_dist: int
         :param min_total: The minimum total number of reads for an event pair to pass the filter.
         :type min_total: int
@@ -772,13 +862,16 @@ class Gene(Interval):
                 _, _, groups = _check_groups(self._transcriptome, [samples], 1)
                 cov = self.coverage[groups[0]].sum(0)
 
-        sg = self.segment_graph
+        if transcript_filter:
+            sg = self.segment_graph_filtered(query=transcript_filter)
+        else:
+            sg = self.segment_graph
 
         if events is None:
             events = sg.find_splice_bubbles(types=event_type)
 
-        events = [e for e in events if _filter_event(cov, e, min_total=min_total,
-                                                     min_alt_fraction=min_alt_fraction)]
+        events = [event for event in events if _filter_event(cov, event, min_total=min_total,
+                                                             min_alt_fraction=min_alt_fraction)]
         # make sure its sorted (according to gene strand)
         if self.strand == '+':
             events.sort(key=itemgetter(2, 3), reverse=False)  # sort by starting node
@@ -996,21 +1089,21 @@ class Gene(Interval):
                     raise
 
 
-def _coding_len(exons, cds):
+def _coding_len(exons: list[tuple[int, int]], cds):
     coding_len = [0, 0, 0]
     state = 0
-    for e in exons:
-        if state < 2 and e[1] >= cds[state]:
-            coding_len[state] += cds[state] - e[0]
-            if state == 0 and cds[1] <= e[1]:  # special case: CDS start and end in same exon
+    for exon in exons:
+        if state < 2 and exon[1] >= cds[state]:
+            coding_len[state] += cds[state] - exon[0]
+            if state == 0 and cds[1] <= exon[1]:  # special case: CDS start and end in same exon
                 coding_len[1] = cds[1] - cds[0]
-                coding_len[2] = e[1] - cds[1]
+                coding_len[2] = exon[1] - cds[1]
                 state += 2
             else:
-                coding_len[state + 1] = e[1] - cds[state]
+                coding_len[state + 1] = exon[1] - cds[state]
                 state += 1
         else:
-            coding_len[state] += e[1] - e[0]
+            coding_len[state] += exon[1] - exon[0]
     return coding_len
 
 

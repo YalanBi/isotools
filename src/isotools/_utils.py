@@ -8,7 +8,22 @@ import builtins
 import logging
 from scipy.stats import chi2_contingency, fisher_exact
 import math
+from typing import Literal, TypeAlias, TYPE_CHECKING
 
+
+if TYPE_CHECKING:
+    from isotools.transcriptome import Transcriptome
+
+ASEType: TypeAlias = Literal['ES', '3AS', '5AS', 'IR', 'ME', 'TSS', 'PAS']
+ASEvent: TypeAlias = tuple[list[int], list[int], int, int, ASEType]
+'''
+In order:
+- transcripts supporting the primary event (the shorter path for the basic event types)
+- transcripts supporting the alternative event (the longer path for the basic event types)
+- node A id
+- node B id
+- event type
+'''
 
 # from Kozak et al, NAR, 1987
 kozak = np.array([[23, 35, 23, 19], [26, 35, 21, 18], [25, 35, 22, 18], [23, 26, 33, 18], [19, 39, 23, 19], [23, 37, 20, 20], [
@@ -211,10 +226,7 @@ def find_orfs(seq, start_codons=["ATG"], stop_codons=['TAA', 'TAG', 'TGA'], ref_
 def has_overlap(r1, r2):
     "check the overlap of two intervals"
     # assuming start < end
-    if r1[1] <= r2[0] or r2[1] <= r1[0]:
-        return False
-    else:
-        return True
+    return r1[1] > r2[0] and r2[1] > r1[0]
 
 
 def get_overlap(r1, r2):
@@ -226,29 +238,27 @@ def get_overlap(r1, r2):
 def get_intersects(tr1, tr2):
     "get the number of intersecting splice sites and intersecting bases of two transcripts"
     tr1_enum = enumerate(tr1)
-    try:
-        j, tr1_exon = next(tr1_enum)
-    except StopIteration:
-        return 0, 0
+    tr2_enum = enumerate(tr2)
     sjintersect = 0
     intersect = 0
-    for i, tr2_exon in enumerate(tr2):
-        while tr1_exon[0] < tr2_exon[1]:
-            if tr2_exon[0] == tr1_exon[0] and i > 0 and j > 0:  # neglegt TSS and polyA
-                sjintersect += 1
-            if tr2_exon[1] == tr1_exon[1] and i < len(tr2)-1 and j < len(tr1)-1:
-                sjintersect += 1
+    try:
+        i, tr1_exon = next(tr1_enum)
+        j, tr2_exon = next(tr2_enum)
+        while True:
             if has_overlap(tr1_exon, tr2_exon):
-                # the regions intersect
+                if tr1_exon[0] == tr2_exon[0] and i > 0 and j > 0:
+                    sjintersect += 1
+                if tr1_exon[1] == tr2_exon[1] and i < len(tr1)-1 and j < len(tr2)-1:
+                    sjintersect += 1
                 i_end = min(tr1_exon[1], tr2_exon[1])
                 i_start = max(tr1_exon[0], tr2_exon[0])
-                intersect += (i_end-i_start)
-            try:
-                j, tr1_exon = next(tr1_enum)
-            except StopIteration:  # tr1 is at end
-                return sjintersect, intersect
-    # tr2 is at end
-    return sjintersect, intersect
+                intersect += (i_end - i_start)
+            if tr1_exon[1] <= tr2_exon[0]:
+                i, tr1_exon = next(tr1_enum)
+            else:
+                j, tr2_exon = next(tr2_enum)
+    except StopIteration:
+        return sjintersect, intersect
 
 
 def _filter_function(expression, context_filters = {}):
@@ -279,7 +289,7 @@ def _filter_function(expression, context_filters = {}):
     return eval(f'lambda {",".join([arg+"=None" for arg in args]+["**kwargs"])}: bool({expression})\n', {}, {}), args
 
 
-def _interval_dist(a, b):
+def _interval_dist(a: tuple[int, int], b: tuple[int, int]):
     '''compute the distance between two intervals a and b.'''
     return max([a[0], b[0]])-min([a[1], b[1]])
 
@@ -358,8 +368,7 @@ def _find_splice_sites(splice_junctions, transcripts):
     '''Checks whether the splice sites of a new transcript are present in the set of transcripts.
     Avoids the computation of segment graph, which provides the same functionality.
 
-    :param sj: A list of 2 tuples with the splice site positions
-    :type exons: list
+    :param splice_junctions: A list of 2 tuples with the splice site positions
     :param transcripts: transcripts to scan
     :return: boolean array indicating whether the splice site is contained or not'''
 
@@ -401,7 +410,8 @@ def _find_splice_sites(splice_junctions, transcripts):
     return sites
 
 
-def precompute_events_dict(transcriptome, event_type=("ES", "5AS", "3AS", "IR", "ME"), min_cov=100, region=None,  query=None, progress_bar=True):
+def precompute_events_dict(transcriptome: 'Transcriptome', event_type: list[ASEType] = ("ES", "5AS", "3AS", "IR", "ME"),
+                           min_cov=100, region=None, query=None, progress_bar=True):
     '''
     Precomputes the events_dict, i.e. a dictionary of splice bubbles. Each key is a gene and each value is the splice bubbles
     object corresponding to that gene.
@@ -419,7 +429,7 @@ def precompute_events_dict(transcriptome, event_type=("ES", "5AS", "3AS", "IR", 
     return events_dict
 
 
-def get_quantiles(pos, percentile=[.5]):
+def get_quantiles(pos: list[tuple[int, int]], percentile=[.5]):
     '''provided a list of (positions,coverage) pairs, return the median position'''
     # percentile should be sorted, and between 0 and 1
     total = sum(cov for _, cov in pos)
@@ -444,7 +454,7 @@ def smooth(x, window_len=31):
     return y[int(window_len/2-(window_len+1) % 2):-int(window_len/2)]
 
 
-def prepare_contingency_table(eventA, eventB, coverage):
+def prepare_contingency_table(eventA: ASEvent, eventB: ASEvent, coverage):
     '''
     Prepare the read counts and transcript id contingency tables for two events.
 
@@ -465,7 +475,7 @@ def prepare_contingency_table(eventA, eventB, coverage):
     return con_tab, transcript_id_table
 
 
-def pairwise_event_test(con_tab, test="fisher", pseudocount=.01):
+def pairwise_event_test(con_tab, test: Literal['fisher', 'chi2'] = "fisher", pseudocount=.01):
     '''
     Performs an independence test on the contingency table and computes effect sizes.
 
@@ -480,20 +490,20 @@ def pairwise_event_test(con_tab, test="fisher", pseudocount=.01):
     else:
         raise (ValueError('test should be "chi2" or "fisher"'))
 
-    test_res = test_fun(con_tab+pseudocount)  # add some small value (TODO: is this also for fisher test?)
+    # add some small value for chi2
+    # TODO: inconsistency: test_stat is the odds ratio for the fisher test and X^2 for the chisq test
+    test_stat, p_value = test_fun(con_tab + pseudocount if test == "chi2" else con_tab)
 
     # priA_priB_trID, altA_altB_trID = tr_ID_tab[0, 0], tr_ID_tab[1, 1]
     # priA_altB_trID, altA_priB_trID = tr_ID_tab[1, 0], tr_ID_tab[0, 1]
     # priA_priB, altA_altB = con_tab[0, 0], con_tab[1, 1]
     # priA_altB, altA_priB = con_tab[1, 0], con_tab[0, 1]
-    p_value = test_res[1]
-    test_stat = test_res[0]  # TODO: inconsistancy: this is the odds ratio for the fisher test and X^2 for the chisq test
     log2OR = _corrected_log2OR(con_tab)
     # logOR is a measure of the effect size. coordination between the events is either positive or negative.
     dcPSI_AB, dcPSI_BA = dcPSI(con_tab)
     # delta conditional PSI is another measure of the effect size.
 
-    return p_value, test_stat, log2OR,  dcPSI_AB, dcPSI_BA
+    return p_value, test_stat, log2OR, dcPSI_AB, dcPSI_BA
 
 
 def _corrected_log2OR(con_tab):
@@ -509,7 +519,7 @@ def _corrected_log2OR(con_tab):
 
 
 def dcPSI(con_tab):
-    # delta conditional PSI of a coordinated event
+    '''delta conditional PSI of a coordinated event'''
     # 1) dcPSI_AB= PSI(B | altA) - PSI(B)
     dcPSI_AB = con_tab[1, 1]/con_tab[:, 1].sum()-con_tab[1, :].sum()/con_tab.sum(None)
     # 2) dcPSI_BA= PSI(A | altB) - PSI(A)
