@@ -360,7 +360,7 @@ def estimate_tpm_threshold(n_reads, cov_th=2, p=.8):
     return minimize_scalar(_tpm_fun,  bounds=(.01, 1000), args=(n_reads, cov_th, p))['x']
 
 
-def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, tr_filter={}):
+def altsplice_stats(self: 'Transcriptome', groups=None, weight_by_coverage=True, min_coverage=2, tr_filter={}):
     '''Summary statistics for novel alternative splicing.
 
     This function counts the novel alternative splicing events of LRTS isoforms with respect to the reference annotation.
@@ -409,7 +409,7 @@ def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, 
     #
 
 
-def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_coverage=2, tr_filter={}):
+def filter_stats(self: 'Transcriptome', tags=None, groups=None, weight_by_coverage=True, min_coverage=2, **kwargs):
     '''Summary statistics for filter flags.
 
     This function counts the number of transcripts corresponding to filter tags.
@@ -419,7 +419,7 @@ def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_cove
     :param groups: A dict {group_name:[sample_name_list]} specifying sample groups. If omitted, the samples are analyzed individually.
     :param weight_by_coverage: If True, each transcript is weighted by the number of supporting reads.
     :param min_coverage: Coverage threshold per sample to ignore poorly covered transcripts.
-    :param tr_filter: Only transcripts that pass this filter are evaluated. Filter is provided as dict of parameters, passed to self.iter_transcripts().
+    :param kwargs: Additional parameters are passed to self.iter_transcripts().
     :return: Table with numbers of transcripts featuring the filter tag, and suggested parameters for isotools.plots.plot_bar().'''
 
     weights = dict()
@@ -431,7 +431,7 @@ def filter_stats(self, tags=None, groups=None, weight_by_coverage=True, min_cove
         sample_indices = {sample: i for i, sample in enumerate(self.samples)}  # idx
         groups = {group_name: [sample_indices[sample] for sample in sample_group] for group_name, sample_group in groups.items()}
     current = None
-    for gene, transcript_id, transcript in self.iter_transcripts(**tr_filter):
+    for gene, transcript_id, transcript in self.iter_transcripts(**kwargs):
         if gene != current:
             current = gene
             weight = gene.coverage.copy() if groups is None else np.array([gene.coverage[group, :].sum(0) for group in groups.values()])
@@ -813,7 +813,7 @@ def coordination_test(self: 'Transcriptome', samples=None, test: Literal['fisher
 
     res = pd.DataFrame(test_res, columns=col_names)
 
-    adj_p_value = multi.multipletests(res.pvalue, method=padj_method)[1]
+    adj_p_value = multi.multipletests(res.pvalue, method=padj_method)[1] if len(res.pvalue) > 0 else []
 
     res.insert(10, "padj", adj_p_value)
 

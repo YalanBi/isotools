@@ -724,6 +724,12 @@ class SegmentGraph():
             node = next_node
         return node
 
+    def _get_exon_end_all(self, node: int):
+        'find the end of the exon considering all transcripts'
+        while node < len(self) - 1 and self[node].end == self[node + 1].start:
+            node += 1
+        return node
+
     def _get_exon_start(self, transcript_id: int, node: int):
         'find the start of the exon to which node belongs for given transcript'
         while node != self._tss[transcript_id]:
@@ -735,6 +741,12 @@ class SegmentGraph():
             if self[next_node].end < self[node].start:
                 return node
             node = next_node
+        return node
+
+    def _get_exon_start_all(self, node):
+        'find the start of the exon considering all transcripts'
+        while node > 0 and self[node - 1].end == self[node].start:
+            node -= 1
         return node
 
     def _find_splice_bubbles_at_position(self, types: list[ASEType], pos):
@@ -948,7 +960,7 @@ class SegmentGraph():
         tss_start: dict[int, int] = {}
         pas_end: dict[int, int] = {}
         for transcript_id, (start1, end1) in enumerate(zip(self._tss, self._pas)):
-            start2 = self._get_exon_end(transcript_id, start1)
+            start2 = self._get_exon_end_all(start1)
             # skip single exon transcripts
             if start2 == end1:
                 continue
@@ -958,7 +970,7 @@ class SegmentGraph():
             # tss_start is first node of start exon (wrt all transcripts sharing same last node of start exon)
             tss_start[start2] = min(start1, tss_start.get(start2, start1))
 
-            end2 = self._get_exon_start(transcript_id, end1)
+            end2 = self._get_exon_start_all(end1)
             pas.setdefault(end2, set()).add(transcript_id)
             pas_end[end2] = max(end1, pas_end.get(end2, end1))
         alt_types: list[ASEType] = ['PAS', 'TSS'] if self.strand == '-' else ['TSS', 'PAS']

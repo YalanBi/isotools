@@ -879,13 +879,13 @@ class Gene(Interval):
             events.sort(key=itemgetter(3, 2), reverse=True)  # reverse sort by end node
         test_res = []
 
-        for i, j in itertools.combinations(range(len(events)), 2):
-            if sg.events_dist(events[i], events[j]) < min_dist:
+        for event1, event2 in itertools.combinations(events, 2):
+            if sg.events_dist(event1, event2) < min_dist:
                 continue
-            if (events[i][4], events[j][4]) == ("TSS", "TSS") or (events[i][4], events[j][4]) == ("PAS", "PAS"):
+            if (event1[4], event2[4]) == ("TSS", "TSS") or (event1[4], event2[4]) == ("PAS", "PAS"):
                 continue
 
-            con_tab, tr_ID_tab = prepare_contingency_table(events[i], events[j], cov)
+            con_tab, tr_ID_tab = prepare_contingency_table(event1, event2, cov)
 
             if con_tab.sum(None) < min_total:  # check that the joint occurrence of the two events passes the threshold
                 continue
@@ -893,14 +893,14 @@ class Gene(Interval):
                 continue
             test_result = pairwise_event_test(con_tab, test=test)  # append to test result
 
-            coordinate1 = sg._get_event_coordinate(events[i])
-            coordinate2 = sg._get_event_coordinate(events[j])
+            coordinate1 = sg._get_event_coordinate(event1)
+            coordinate2 = sg._get_event_coordinate(event2)
 
-            attr = (self.id, self.name, self.strand, events[i][4], events[j][4]) + \
+            attr = (self.id, self.name, self.strand, event1[4], event2[4]) + \
                 coordinate1 + coordinate2 + test_result + \
                 tuple(con_tab.flatten()) + tuple(tr_ID_tab.flatten())
 
-            # events[i][4] is the events[i] type
+            # event1[4] is the event1 type
             # coordinate1[0] is the starting coordinate of event 1
             # coordinate1[0] is the ending coordinate of event 1
             # coordinate2[0] is the starting coordinate of event 2
