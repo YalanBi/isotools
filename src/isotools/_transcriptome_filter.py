@@ -51,7 +51,7 @@ ANNOTATION_VOCABULARY = ['antisense', 'intergenic', 'genic genomic', 'novel exon
 
 # filtering functions for the transcriptome class
 
-def add_orf_prediction(self, genome_fn, progress_bar=True, filter_transcripts={}, filter_ref_transcripts={}, min_len=300, max_5utr_len=500,
+def add_orf_prediction(self: 'Transcriptome', genome_fn, progress_bar=True, filter_transcripts={}, filter_ref_transcripts={}, min_len=300, max_5utr_len=500,
                        min_kozak=None, prefer_annotated_init=True,  kozak_matrix=DEFAULT_KOZAK_PWM, fickett_score=True, hexamer_file=None):
     ''' Performs ORF prediction on the transcripts.
 

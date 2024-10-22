@@ -126,7 +126,7 @@ class Gene(Interval):
                 self.data['short_reads'].append(Coverage.from_bam(srdf.file[i], self))
         return self.data['short_reads'][idx]
 
-    def correct_fuzzy_junctions(self, transcript_id, size, modify=True):
+    def correct_fuzzy_junctions(self, transcript: Transcript, size, modify=True):
         '''Corrects for splicing shifts.
 
          This function looks for "shifted junctions", e.g. same difference compared to reference annotation at both donor and acceptor)
@@ -137,14 +137,14 @@ class Gene(Interval):
          :param modify: If set, the exon positions are corrected according to the reference.
          :returns: A dictionary with the exon id as keys and the shifted bases as values.'''
 
-        exons = transcript_id['exons']
+        exons = transcript['exons']
         shifts = self.ref_segment_graph.fuzzy_junction(exons, size)
         if shifts and modify:
             for i, sh in shifts.items():
                 if exons[i][0] <= exons[i][1] + sh and exons[i + 1][0] + sh <= exons[i + 1][1]:
                     exons[i][1] += sh
                     exons[i + 1][0] += sh
-            transcript_id['exons'] = [e for e in exons if e[0] < e[1]]  # remove zero length exons
+            transcript['exons'] = [e for e in exons if e[0] < e[1]]  # remove zero length exons
         return shifts
 
     def _to_gtf(self, transcript_ids, ref_transcript_ids=None, source='isoseq', ref_source='annotation'):
@@ -818,7 +818,7 @@ class Gene(Interval):
                     contained[j] = True
         return current
 
-    def coordination_test(self, samples=None, test: Literal['fisher', 'chi2'] = "fisher", min_dist=1, min_total=100, min_alt_fraction=.1,
+    def coordination_test(self, samples=None, test: Literal['fisher', 'chi2'] = "fisher", min_dist_AB=1, min_dist_events=1, min_total=100, min_alt_fraction=.1,
                           events: Optional[list[ASEvent]] = None, event_type=("ES", "5AS", "3AS", "IR", "ME"),
                           transcript_filter: Optional[str] = None) -> list[tuple]:
         '''Performs pairwise independence test for all pairs of Alternative Splicing Events (ASEs) in a gene.
@@ -834,8 +834,8 @@ class Gene(Interval):
             The samples can be provided either as a single group name, a list of sample names, or a list of sample indices.
         :param test: Test to be performed. One of ("chi2", "fisher")
         :type test: str
-        :param min_dist: Minimum distance (in nucleotides) between the two alternative splicing events for the pair to be tested.
-        :type min_dist: int
+        :param min_dist_AB: Minimum distance (in nucleotides) between node A and B in an event
+        :param min_dist_events: Minimum distance (in nucleotides) between the two alternative splicing events for the pair to be tested.
         :param min_total: The minimum total number of reads for an event pair to pass the filter.
         :type min_total: int
         :param min_alt_fraction: The minimum fraction of reads supporting the minor alternative of the two events.
@@ -880,7 +880,7 @@ class Gene(Interval):
         test_res = []
 
         for event1, event2 in itertools.combinations(events, 2):
-            if sg.events_dist(event1, event2) < min_dist:
+            if sg.events_dist(event1, event2) < min_dist_events:
                 continue
             if (event1[4], event2[4]) == ("TSS", "TSS") or (event1[4], event2[4]) == ("PAS", "PAS"):
                 continue
@@ -891,10 +891,13 @@ class Gene(Interval):
                 continue
             if min(con_tab.sum(1).min(), con_tab.sum(0).min())/con_tab.sum(None) < min_alt_fraction:
                 continue
-            test_result = pairwise_event_test(con_tab, test=test)  # append to test result
 
             coordinate1 = sg._get_event_coordinate(event1)
             coordinate2 = sg._get_event_coordinate(event2)
+            if coordinate1[1] - coordinate1[0] < min_dist_AB or coordinate2[1] - coordinate2[0] < min_dist_AB:
+                continue
+
+            test_result = pairwise_event_test(con_tab, test=test)  # append to test result
 
             attr = (self.id, self.name, self.strand, event1[4], event2[4]) + \
                 coordinate1 + coordinate2 + test_result + \
@@ -959,15 +962,15 @@ class Gene(Interval):
         else:
             return pval, deltaPI_neg, idx[neg_idx]
 
-    def _unify_ends(self, smooth_window=31, rel_prominence=1, search_range=(.1, .9)):
+    def _unify_ends(self, smooth_window=31, rel_prominence=1, search_range: tuple[float, float] = (.1, .9)):
         ''' Find common TSS/PAS for transcripts of the gene'''
         if not self.transcripts:
             # nothing to do here
             return
         assert 0 <= search_range[0] <= .5 <= search_range[1] <= 1
         # get gene tss/pas profiles
-        tss = {}
-        pas = {}
+        tss: dict[int, int] = {}
+        pas: dict[int, int] = {}
         strand = 1 if self.strand == '+' else -1
         for transcript in self.transcripts:
             for sample in transcript['TSS']:
@@ -979,10 +982,10 @@ class Gene(Interval):
 
         tss_pos = [min(tss), max(tss)]
         if tss_pos[1]-tss_pos[0] < smooth_window:
-            tss_pos[0] -= (smooth_window + tss_pos[0]-tss_pos[1] - 1)
+            tss_pos[0] = tss_pos[1] - smooth_window + 1
         pas_pos = [min(pas), max(pas)]
         if pas_pos[1]-pas_pos[0] < smooth_window:
-            pas_pos[0] -= (smooth_window + pas_pos[0]-pas_pos[1] - 1)
+            pas_pos[0] = pas_pos[1] - smooth_window + 1
         tss = [tss.get(pos, 0) for pos in range(tss_pos[0], tss_pos[1]+1)]
         pas = [pas.get(pos, 0) for pos in range(pas_pos[0], pas_pos[1]+1)]
         # smooth profiles and find maxima
@@ -990,22 +993,22 @@ class Gene(Interval):
         pas_smooth = smooth(np.array(pas), smooth_window)
         # at least half of smooth_window reads required to call a peak
         # minimal distance between peaks is > ~ smooth_window
-        # rel_prominence=1 -> smaller peak must have twice the hight of valley to call two peaks
+        # rel_prominence=1 -> smaller peak must have twice the height of valley to call two peaks
         tss_peaks, _ = find_peaks(np.log2(tss_smooth+1), prominence=(rel_prominence, None))
-        tss_peak_pos = tss_peaks+tss_pos[0]-1
+        tss_peak_pos: list[int] = tss_peaks+tss_pos[0]-1
         pas_peaks, _ = find_peaks(np.log2(pas_smooth+1), prominence=(rel_prominence, None))
-        pas_peak_pos = pas_peaks+pas_pos[0]-1
+        pas_peak_pos: list[int] = pas_peaks+pas_pos[0]-1
 
         # find transcripts with common first/last splice site
-        first_junction = {}
-        last_junction = {}
+        first_junction: dict[int, list[int]] = {}
+        last_junction: dict[int, list[int]] = {}
         for transcript_id, transcript in enumerate(self.transcripts):
             first_junction.setdefault(transcript['exons'][0][1], []).append(transcript_id)
             last_junction.setdefault(transcript['exons'][-1][0], []).append(transcript_id)
         # first / last junction with respect to direction of transcription
         if self.strand == '-':
             first_junction, last_junction = last_junction, first_junction
-        # for each site, find consistant "peaks" TSS/PAS
+        # for each site, find consistent "peaks" TSS/PAS
         # if none found use median of all read starts
         for junction_pos, transcript_ids in first_junction.items():
             profile = {}
@@ -1023,8 +1026,9 @@ class Gene(Interval):
                 transcript = self.transcripts[transcript_id]
                 transcript['TSS_unified'] = {}
                 for sample, sample_tss in transcript['TSS'].items():
-                    tss_unified = {}
-                    for pos, c in sample_tss.items():  # for each read start position, find closest peak
+                    tss_unified: dict[int, int] = {}
+                    # for each read start position, find closest peak
+                    for pos, c in sample_tss.items():
                         next_peak = min((p for p in ol_peaks if cmp_dist(junction_pos, p, min_dist=3) == strand),
                                         default=pos, key=lambda x: abs(x-pos))
                         tss_unified[next_peak] = tss_unified.get(next_peak, 0)+c
@@ -1046,7 +1050,7 @@ class Gene(Interval):
                 transcript = self.transcripts[transcript_id]
                 transcript['PAS_unified'] = {}
                 for sample, sa_pas in transcript['PAS'].items():
-                    pas_unified = {}
+                    pas_unified: dict[int, int] = {}
                     for pos, c in sa_pas.items():
                         next_peak = min((p for p in ol_peaks if cmp_dist(p, junction_pos, min_dist=3) == strand),
                                         default=pos, key=lambda x: abs(x-pos))
@@ -1054,8 +1058,8 @@ class Gene(Interval):
                     transcript['PAS_unified'][sample] = pas_unified
         for transcript in self.transcripts:
             # find the most common tss/pas per transcript, and set the exon boundaries
-            sum_tss = {}
-            sum_pas = {}
+            sum_tss: dict[int, int] = {}
+            sum_pas: dict[int, int] = {}
             start = end = max_tss = max_pas = 0
             for sample_tss in transcript['TSS_unified'].values():
                 for pos, cov in sample_tss.items():

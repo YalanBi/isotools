@@ -789,7 +789,7 @@ def _add_sample_transcript(transcriptome: Transcriptome, transcript: Transcript,
 
 
 def _combine_transcripts(established: Transcript, new_transcript: Transcript):
-    'merge new_tr into splice identical established transcript'
+    'merge new_transcript into splice identical established transcript'
     try:
         for sample_name in new_transcript['coverage']:
             established['coverage'][sample_name] = established['coverage'].get(sample_name, 0) + new_transcript['coverage'][sample_name]

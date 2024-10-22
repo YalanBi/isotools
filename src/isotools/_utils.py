@@ -294,7 +294,7 @@ def _interval_dist(a: tuple[int, int], b: tuple[int, int]):
     return max([a[0], b[0]])-min([a[1], b[1]])
 
 
-def _filter_event(coverage, event, min_total=100, min_alt_fraction=.1):
+def _filter_event(coverage, event: ASEvent, min_total=100, min_alt_fraction=.1):
     '''
     return True if the event satisfies the filter conditions and False otherwise
 
@@ -434,7 +434,7 @@ def get_quantiles(pos: list[tuple[int, int]], percentile=[.5]):
     # percentile should be sorted, and between 0 and 1
     total = sum(cov for _, cov in pos)
     n = 0
-    result_list = []
+    result_list: list[int] = []
     for p, cov in sorted(pos, key=lambda x: x[0]):
         n += cov
         while n >= total * percentile[len(result_list)]:
@@ -445,7 +445,7 @@ def get_quantiles(pos: list[tuple[int, int]], percentile=[.5]):
 
 
 def smooth(x, window_len=31):
-    """ smooth the data using a hanning window with requested size."""
+    '''smooth the data using a hanning window with requested size.'''
     # padding with mirrored
     s = np.r_[x[window_len-1:0:-1], x, x[-2:-window_len-1:-1]]
     # print(len(s))
