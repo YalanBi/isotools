@@ -230,7 +230,7 @@ class Transcriptome:
         '''The list of chromosome names.'''
         return list(self.data)
 
-    def _add_novel_gene(self, chrom, start, end, strand, info, novel_prefix='PB_novel_'):
+    def _add_novel_gene(self, chrom, start, end, strand, info, novel_prefix='IT_novel_'):
         n_novel = self.novel_genes
         info.update({'chr': chrom, 'ID': f'{novel_prefix}{n_novel+1:05d}', 'strand': strand})
         g = Gene(start, end, info, self)

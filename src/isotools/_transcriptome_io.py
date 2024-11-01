@@ -221,7 +221,7 @@ def add_sample_from_csv(self: Transcriptome, coverage_csv_file, transcripts_file
         except AssertionError:
             logger.warning('skipping transcript %s from gene %s: duplicate transcript id', row.transcript_id, row.gene_id)
     id_map = {}
-    novel_prefix = 'PB_novel_'
+    novel_prefix = 'IT_novel_'
     if reconstruct_genes:
         # this approach ignores gene structure, and reassigns transcripts
         novel = {}
@@ -830,7 +830,7 @@ def _get_novel_type(exons, genes_overlap, genes_overlap_strand):
         return {'intergenic': []}
 
 
-def _add_novel_genes(t: Transcriptome, novel, chrom, spj_iou_th=0, reg_iou_th=.5, gene_prefix='PB_novel_'):
+def _add_novel_genes(t: Transcriptome, novel, chrom, spj_iou_th=0, reg_iou_th=.5, gene_prefix='IT_novel_'):
     '"novel" is a tree of transcript intervals (not Gene objects) ,e.g. from one chromosome, that do not overlap any annotated or unanntoated gene'
     n_novel = t.novel_genes
     idx = {id(transcript): i for i, transcript in enumerate(novel)}
