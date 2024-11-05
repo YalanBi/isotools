@@ -18,8 +18,8 @@ ASEType: TypeAlias = Literal['ES', '3AS', '5AS', 'IR', 'ME', 'TSS', 'PAS']
 ASEvent: TypeAlias = tuple[list[int], list[int], int, int, ASEType]
 '''
 In order:
-- transcripts supporting the primary event (the shorter path for the basic event types)
-- transcripts supporting the alternative event (the longer path for the basic event types)
+- transcripts supporting the primary event (the longer path for the basic event types)
+- transcripts supporting the alternative event (the shorter path for the basic event types)
 - node A id
 - node B id
 - event type
