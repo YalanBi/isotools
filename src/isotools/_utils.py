@@ -189,7 +189,7 @@ def kozak_score(sequence, pos, pwm=DEFAULT_KOZAK_PWM):
     return sum(pwm.loc[sequence[pos+i], i] for i in pwm.columns if pos+i >= 0 and pos+i < len(sequence))
 
 
-def find_orfs(seq, start_codons=["ATG"], stop_codons=['TAA', 'TAG', 'TGA'], ref_cds={}):
+def find_orfs(sequence, start_codons=["ATG"], stop_codons=['TAA', 'TAG', 'TGA'], ref_cds={}):
     '''Find all open reading frames on the forward strand of the sequence.
     Return a 7-tuple with start and stop position, reading frame (0,1 or 2), start and stop codon sequence,
     number of upstream start codons, and the ids of the reference transcripts with matching CDS initialization.'''
@@ -197,11 +197,11 @@ def find_orfs(seq, start_codons=["ATG"], stop_codons=['TAA', 'TAG', 'TGA'], ref_
     starts = [[], [], []]
     stops = [[], [], []]
     for init, ref_ids in ref_cds.items():
-        starts[init % 3].append((init, seq[init:(init+3)], ref_ids))
-    for match in re.finditer("|".join(start_codons), seq):
+        starts[init % 3].append((init, sequence[init:(init+3)], ref_ids))
+    for match in re.finditer("|".join(start_codons), sequence):
         if match.start() not in ref_cds:
             starts[match.start() % 3].append((match.start(), match.group(), None))  # position and codon
-    for match in re.finditer("|".join(stop_codons), seq):
+    for match in re.finditer("|".join(stop_codons), sequence):
         stops[match.start() % 3].append((match.end(), match.group()))
     for frame in range(3):
         stop, stop_codon = (0, None)
@@ -561,3 +561,135 @@ def cmp_dist(a, b, min_dist=3):
     if b >= a+min_dist:
         return -1
     return 0
+
+
+# gene structure variation
+
+def structure_feature_cov(transcripts, samples, feature='TSS'):
+    '''
+    :param transcripts: A list of transcript annotations of a gene obtained from isoseq[gene].transcripts.
+    :param feature: 'ec', 'TSS', 'PAS'.
+    :param samples: A list of sample names to specify the samples to be considered.
+    :return: Selected feature of input transcripts and corresponding coverage across samples.
+
+    1) ec - exon_chain, query coverage matrix and exon positions, and return all the exon_chain and coverage.
+    2) TSS/PAS, query TSS_unified or PAS_unified coverage matrix, and return all the positions and coverage.
+    '''
+
+    if feature not in ['ec', 'TSS', 'PAS']:
+        raise ValueError('choose feature from ec, TSS, PAS')
+
+    cov = {}
+    if feature == 'ec':
+        field = 'coverage'
+        for tr in transcripts:
+            if tr[field] is None:
+                continue
+
+            # Convert list of exons to tuple of tuples to make it hashable as a key of a dictionary
+            exon_chain = tuple(map(tuple, tr['exons']))
+            if exon_chain not in cov:
+                cov[exon_chain] = 0
+            for s, n in tr[field].items():
+                if s in samples:
+                    cov[exon_chain] += n
+            if cov[exon_chain] == 0:
+                del cov[exon_chain]
+    else:
+        field = f'{feature}_unified'
+        for tr in transcripts:
+            if tr[field] is None:
+                continue
+
+            for s,pos_dict in tr[field].items():
+                if s in samples:
+                    for pos, n in pos_dict.items():
+                        if pos not in cov:
+                            cov[pos] = 0
+                        cov[pos] += n
+
+    # keep ones with coverage > 0
+    cov = {k: v for k, v in cov.items() if v > 0}
+
+    if len(cov) == 0:
+        return [], []
+
+    # sort the coverage in descending order and return
+    abundance, occurrence = zip(*sorted(zip(list(cov.values()), list(cov.keys())), reverse=True))
+    return list(abundance), list(occurrence)
+
+
+def count_distinct_pos(pos_list, strict_pos=15):
+    '''
+    :param pos_list: A list of TSS/PAS positions, sorted by their abundance descendingly (output from structure_feature_cov).
+    :param strict_pos: Difference allowed between two positions when considering identical TSS/PAS.
+    :return: How many distinct positions are there.
+    '''
+
+    merged_idx = []
+    for x in range(len(pos_list)-1):
+        if x in merged_idx:
+            continue
+        for y in range(x+1, len(pos_list)):
+            if y in merged_idx:
+                continue
+            if pos_list[x] - strict_pos <= pos_list[y] <= pos_list[x] + strict_pos:
+                #print(f'{x}:{pos_list[x]} and {y}: {pos_list[y]} are close enough')
+                # keep the one with higher coverage
+                merged_idx.append(y)
+    return len(pos_list) - len(merged_idx)
+
+
+def count_distinct_exon_chain(ec_list, strict_ec=0, strict_pos=15):
+    '''
+    :param ec_list: A list of exon chains, sorted by their abundance descendingly (output from structure_feature_cov).
+    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they cab be considered as identical.
+    :param strict_pos: Difference allowed between two positions when considering identical TSS/PAS.
+    :return: How many distinct exon chains are there.
+    '''
+
+    merged_idx = []
+    for x in range(len(ec_list)-1):
+        if x in merged_idx:
+            continue
+        for y in range(x+1, len(ec_list)):
+            if y in merged_idx:
+                continue
+            # if the number of exons is different, skip
+            if len(ec_list[x]) != len(ec_list[y]):
+                continue
+
+            pos_in_x = [pos for exon in ec_list[x] for pos in exon]
+            pos_in_y = [pos for exon in ec_list[y] for pos in exon]
+
+            pos_diff = [abs(x - y) for x,y in zip(pos_in_x, pos_in_y)]
+
+            if all(d <= strict_pos if (i == 0 or i == len(pos_diff)-1) else d <= strict_ec for i,d in enumerate(pos_diff)):
+                #print(f'{x} vs {y}: {[abs(x-y) for x,y in zip(pos_in_x, pos_in_y)]}')
+                # keep the one with higher coverage
+                merged_idx.append(y)
+
+    return len(ec_list) - len(merged_idx)
+
+
+def str_var_triplet(transcripts, samples, strict_ec=0, strict_pos=15):
+    '''
+    Quantify the structure variation of transcripts in a gene across specified samples.
+    
+    :param transcripts: A list of transcript annotations of a gene obtained from isoseq[gene].transcripts.
+    :param samples: A list of sample names to specify the samples to be considered..
+    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they cab be considered as identical.
+    :param strict_pos: Difference allowed between two positions when considering identical TSS/PAS.
+    :return (list): A triplet of numbers in the order of distinct TSS positions, exon chains, and PAS positions.
+    '''
+    
+    _, ec_list = structure_feature_cov(transcripts=transcripts, samples=samples, feature='ec')
+    n_ec = count_distinct_exon_chain(ec_list=ec_list, strict_ec=strict_ec, strict_pos=strict_pos)
+
+    _, tss_list = structure_feature_cov(transcripts=transcripts, samples=samples, feature='TSS')
+    n_tss = count_distinct_pos(pos_list=tss_list, strict_pos=strict_pos)
+
+    _, pas_list = structure_feature_cov(transcripts=transcripts, samples=samples, feature='PAS')
+    n_pas = count_distinct_pos(pos_list=pas_list, strict_pos=strict_pos)
+
+    return [n_tss, n_ec, n_pas]
