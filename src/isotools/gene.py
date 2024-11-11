@@ -962,7 +962,7 @@ class Gene(Interval):
         else:
             return pval, deltaPI_neg, idx[neg_idx]
 
-    def _unify_ends(self, smooth_window=31, rel_prominence=1, search_range: tuple[float, float] = (.1, .9)):
+    def _unify_ends(self, smooth_window=31, rel_prominence=1, search_range: tuple[float, float] = (.1, .9), correct_tss=True):
         ''' Find common TSS/PAS for transcripts of the gene'''
         if not self.transcripts:
             # nothing to do here
@@ -1091,7 +1091,8 @@ class Gene(Interval):
                 except AssertionError:
                     logger.error('%s TSS= %s, PAS=%s -> TSS_unified= %s, PAS_unified=%s', self, transcript['TSS'], transcript['PAS'],  transcript['TSS_unified'], transcript['PAS_unified'])
                     raise
-            self._TSS_correction(transcript)
+            if correct_tss:
+                self._TSS_correction(transcript)
 
 
     def _TSS_correction(self, transcript: Transcript):
