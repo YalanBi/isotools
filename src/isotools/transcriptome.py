@@ -261,6 +261,9 @@ class Transcriptome:
         import_sqanti_classification,
     )
 
+    # IO: proteogenomics customised database
+    from ._transcriptome_io import write_fasta
+    
     # filtering functionality and iterators
     from ._transcriptome_filter import add_qc_metrics, add_orf_prediction, add_filter, remove_filter, iter_genes, iter_transcripts, iter_ref_transcripts
 

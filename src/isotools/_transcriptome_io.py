@@ -1462,6 +1462,13 @@ def chimeric_table(self: Transcriptome, region=None, query=None):  # , star_chim
 #    return chim_tab
 
 
+def openfile(fn, gzip=False):
+    if gzip:
+        return gziplib.open(fn, 'wt')
+    else:
+        return open(fn, 'w', encoding="utf8")
+
+
 def write_gtf(self: Transcriptome, fn, source='isotools', gzip=False, **filter_args):
     '''
     Exports the transcripts in gtf format to a file.
@@ -1469,21 +1476,34 @@ def write_gtf(self: Transcriptome, fn, source='isotools', gzip=False, **filter_a
     :param fn: The filename to write the gtf.
     :param source: String for the source column of the gtf file.
     :param region: Specify genomic region to export to gtf. If omitted, export whole genome.
-    :param gzip: compress the output as gzip.
+    :param gzip: Compress the output as gzip.
     :param filter_args: Specify transcript filter query.
     '''
 
-    def openfile(fn):
-        if gzip:
-            return gziplib.open(fn, 'wt')
-        else:
-            return open(fn, 'w', encoding="utf8")
-
-    with openfile(fn) as f:
+    with openfile(fn, gzip) as f:
         logger.info('writing %sgtf file to %s', "gzip compressed " if gzip else "", fn)
         for gene, transcript_ids, _ in self.iter_transcripts(genewise=True, **filter_args):
             lines = gene._to_gtf(transcript_ids=transcript_ids, source=source)
             f.write('\n'.join(('\t'.join(str(field) for field in line) for line in lines)) + '\n')
+
+
+def write_fasta(self: Transcriptome, genome_fn, fn, gzip=False, reference=False, protein=False, **filter_args):
+    '''
+    Exports the transcript sequences in fasta format to a file.
+    
+    :param genome_fn: Path to the genome in fastA format.
+    :param reference: Specify whether the sequence is fetched for reference transcripts (True), or long read transcripts (False, default).
+    :param protein: Return protein sequences (ORF) instead of transcript sequences.
+    :param fn: The filename to write the fasta.
+    :param gzip: Compress the output as gzip.
+    :param filter_args: Additional filter arguments (e.g. "region", "gois", "query") are passed to iter_transcripts.
+    '''
+
+    with openfile(fn, gzip) as f:
+        logger.info('writing %sfasta file to %s', "gzip compressed " if gzip else "", fn)
+        for gene, transcript_ids, _ in self.iter_transcripts(genewise=True, **filter_args):
+            tr_seqs = gene.get_sequence(genome_fn, transcript_ids, reference=reference, protein=protein)
+            f.write('\n'.join(f'>{gene.id}_{k} gene={gene.name}\n{v}' for k,v in tr_seqs.items()) + '\n')
 
 
 def export_alternative_splicing(self: Transcriptome, out_dir, out_format='mats', reference=False, min_total=100,
