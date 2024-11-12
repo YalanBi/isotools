@@ -272,7 +272,7 @@ class Transcriptome:
         transcripts_per_gene_hist, exons_per_transcript_hist, downstream_a_hist, direct_repeat_hist
 
     # statistic: gene models
-    from ._transcriptome_stats import str_var_calculation
+    from ._transcriptome_stats import entropy_calculation, str_var_calculation
     
     # protein domain annotation
     from .domains import add_hmmer_domains, add_annotation_domains
