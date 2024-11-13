@@ -160,7 +160,7 @@ def load_isoseq(args):
 
 def filter_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('filter statistics plots')
-    f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1, transcript_filter={'progress_bar': progress_bar})
+    f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1, progress_bar=progress_bar)
     plt.rcParams["figure.figsize"] = (15+5*len(groups), 7)
     fig, ax = plt.subplots()
     isotools.plots.plot_bar(f_stats[0], ax=ax, **f_stats[1])
@@ -173,7 +173,7 @@ def transcript_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('perparing summary of quality control metrics...')
     logger.info('1) Number of RTTS, fragmentation and internal priming artefacts')
     f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1,
-                                  transcript_filter={'progress_bar': progress_bar}, tags=('RTTS', 'FRAGMENT', 'INTERNAL_PRIMING'))
+                                  progress_bar=progress_bar, tags=('RTTS', 'FRAGMENT', 'INTERNAL_PRIMING'))
     tr_stats = []
     logger.info('2) Transcript length distribution')
     tr_stats.append(isoseq.transcript_length_hist(groups=groups, add_reference=True, min_coverage=2, transcript_filter=dict(query='FSM', progress_bar=progress_bar)))
