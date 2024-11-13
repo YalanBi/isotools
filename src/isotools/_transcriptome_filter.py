@@ -114,7 +114,6 @@ def add_qc_metrics(self: 'Transcriptome', genome_fn: str, progress_bar=True, dow
     :param downstream_a_len: The number of bases downstream the transcript where the adenosine fraction is determined.
     :param direct_repeat_wd: The number of bases around the splice sites scanned for direct repeats.
     :param direct_repeat_wobble: Number of bases the splice site sequences are shifted.
-    :param unify_ends: Unify TSS/PAS across transcripts of a gene.
     :param direct_repeat_mm: Maximum number of missmatches in a direct repeat.
     :param unify_ends: If set, the TSS and PAS are unified using peak calling.
     :param correct_tss: If set TSS are corrected with respect to the reference annotation. Only used if unify_ends is set.
