@@ -761,7 +761,7 @@ def coordination_test(self: 'Transcriptome', samples=None, test: Literal['fisher
         The samples can be provided either as a single group name, a list of sample names, or a list of sample indices.
     :param test: Test to be performed. One of ("chi2", "fisher")
     :param min_dist_AB: Minimum distance (in nucleotides) between node A and B in an event
-    :param min_dist_events: Minimum distance (in nucleotides) between the two Alternative Splicing Events for the pair to be tested
+    :param min_dist_events: Minimum number of nucleotides between the end of the first event and the start of the second event in each tested pair of events
     :param min_total: The minimum total number of reads for an event to pass the filter
     :type min_total: int
     :param min_alt_fraction: The minimum fraction of read supporting the alternative
