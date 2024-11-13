@@ -870,8 +870,9 @@ class Gene(Interval):
         if events is None:
             events = sg.find_splice_bubbles(types=event_type)
 
-        events = [event for event in events if _filter_event(cov, event, min_total=min_total,
-                                                             min_alt_fraction=min_alt_fraction)]
+        events = [event for event in events
+                  if _filter_event(cov, event, segment_graph=sg, min_total=min_total,
+                                   min_alt_fraction=min_alt_fraction, min_dist_AB=min_dist_AB)]
         # make sure its sorted (according to gene strand)
         if self.strand == '+':
             events.sort(key=itemgetter(2, 3), reverse=False)  # sort by starting node
@@ -891,13 +892,9 @@ class Gene(Interval):
                 continue
             if min(con_tab.sum(1).min(), con_tab.sum(0).min())/con_tab.sum(None) < min_alt_fraction:
                 continue
-
+            test_result = pairwise_event_test(con_tab, test=test)  # append to test result
             coordinate1 = sg._get_event_coordinate(event1)
             coordinate2 = sg._get_event_coordinate(event2)
-            if coordinate1[1] - coordinate1[0] < min_dist_AB or coordinate2[1] - coordinate2[0] < min_dist_AB:
-                continue
-
-            test_result = pairwise_event_test(con_tab, test=test)  # append to test result
 
             attr = (self.id, self.name, self.strand, event1[4], event2[4]) + \
                 coordinate1 + coordinate2 + test_result + \
