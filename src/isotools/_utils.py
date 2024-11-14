@@ -666,7 +666,7 @@ def str_var_triplet(transcripts, samples, strict_ec=0, strict_pos=15):
     
     :param transcripts: A list of transcript annotations of a gene obtained from isoseq[gene].transcripts.
     :param samples: A list of sample names to specify the samples to be considered..
-    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they cab be considered as identical.
+    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they can be considered as identical.
     :param strict_pos: Difference allowed between two positions when considering identical TSS/PAS.
     :return (list): A triplet of numbers in the order of distinct TSS positions, exon chains, and PAS positions.
     '''

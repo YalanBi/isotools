@@ -8,16 +8,13 @@ import numpy as np
 import pandas as pd
 import itertools
 from typing import Literal, Optional, TYPE_CHECKING
-from ._utils import ASEType
 
 if TYPE_CHECKING:
     from .transcriptome import Transcriptome
 
 # from .decorators import deprecated, debug, experimental
-from ._utils import _filter_function
 from .splice_graph import SegmentGraph
-
-from ._utils import str_var_triplet
+from ._utils import _filter_function, ASEType, str_var_triplet
 
 logger = logging.getLogger('isotools')
 
