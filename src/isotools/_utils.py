@@ -13,6 +13,7 @@ from typing import Literal, TypeAlias, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from isotools.transcriptome import Transcriptome
+    from .splice_graph import SegmentGraph
 
 ASEType: TypeAlias = Literal['ES', '3AS', '5AS', 'IR', 'ME', 'TSS', 'PAS']
 ASEvent: TypeAlias = tuple[list[int], list[int], int, int, ASEType]
@@ -294,7 +295,7 @@ def _interval_dist(a: tuple[int, int], b: tuple[int, int]):
     return max([a[0], b[0]])-min([a[1], b[1]])
 
 
-def _filter_event(coverage, event, min_total=100, min_alt_fraction=.1):
+def _filter_event(coverage, event: ASEvent, segment_graph: 'SegmentGraph', min_total=100, min_alt_fraction=.1, min_dist_AB=0):
     '''
     return True if the event satisfies the filter conditions and False otherwise
 
@@ -303,7 +304,9 @@ def _filter_event(coverage, event, min_total=100, min_alt_fraction=.1):
     :param min_total: The minimum total number of reads for an event to pass the filter
     :type min_total: int
     :param min_alt_fraction: The minimum fraction of read supporting the alternative
-    :type min_alt_frction: float'''
+    :type min_alt_frction: float
+    :param min_dist_AB: Minimum distance (in nucleotides) between node A and B in an event
+    '''
 
     tr_IDs = event[0]+event[1]
     tot_cov = coverage[tr_IDs].sum()
@@ -316,6 +319,10 @@ def _filter_event(coverage, event, min_total=100, min_alt_fraction=.1):
     frac = min(pri_cov, alt_cov)/tot_cov
 
     if frac < min_alt_fraction:
+        return False
+
+    coordinates = segment_graph._get_event_coordinate(event)
+    if coordinates[1] - coordinates[0] < min_dist_AB:
         return False
 
     return True
@@ -434,7 +441,7 @@ def get_quantiles(pos: list[tuple[int, int]], percentile=[.5]):
     # percentile should be sorted, and between 0 and 1
     total = sum(cov for _, cov in pos)
     n = 0
-    result_list = []
+    result_list: list[int] = []
     for p, cov in sorted(pos, key=lambda x: x[0]):
         n += cov
         while n >= total * percentile[len(result_list)]:
@@ -445,7 +452,7 @@ def get_quantiles(pos: list[tuple[int, int]], percentile=[.5]):
 
 
 def smooth(x, window_len=31):
-    """ smooth the data using a hanning window with requested size."""
+    '''smooth the data using a hanning window with requested size.'''
     # padding with mirrored
     s = np.r_[x[window_len-1:0:-1], x, x[-2:-window_len-1:-1]]
     # print(len(s))

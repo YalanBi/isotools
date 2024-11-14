@@ -24,6 +24,8 @@ class FilterData(TypedDict):
     transcript: dict[str, str]
     reference: dict[str, str]
 
+class InfosData(TypedDict):
+    biases: bool
 
 class Transcriptome:
     '''Contains sequencing data and annotation for Long Read Transcriptome Sequencing (LRTS) Experiments.
@@ -32,7 +34,7 @@ class Transcriptome:
 
     data: dict[str, IntervalTree[Gene]]
     'One IntervalTree of Genes for each chromosome.'
-    infos: dict
+    infos: InfosData
     chimeric: dict
     filter: FilterData
     _idx: dict[str, Gene]

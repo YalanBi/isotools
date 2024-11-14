@@ -160,7 +160,7 @@ def load_isoseq(args):
 
 def filter_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('filter statistics plots')
-    f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1, tr_filter={'progress_bar': progress_bar})
+    f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1, progress_bar=progress_bar)
     plt.rcParams["figure.figsize"] = (15+5*len(groups), 7)
     fig, ax = plt.subplots()
     isotools.plots.plot_bar(f_stats[0], ax=ax, **f_stats[1])
@@ -173,17 +173,17 @@ def transcript_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('perparing summary of quality control metrics...')
     logger.info('1) Number of RTTS, fragmentation and internal priming artefacts')
     f_stats = isoseq.filter_stats(groups=groups, weight_by_coverage=True, min_coverage=1,
-                                  tr_filter={'progress_bar': progress_bar}, tags=('RTTS', 'FRAGMENT', 'INTERNAL_PRIMING'))
+                                  progress_bar=progress_bar, tags=('RTTS', 'FRAGMENT', 'INTERNAL_PRIMING'))
     tr_stats = []
     logger.info('2) Transcript length distribution')
-    tr_stats.append(isoseq.transcript_length_hist(groups=groups, add_reference=True, min_coverage=2, tr_filter=dict(query='FSM', progress_bar=progress_bar)))
+    tr_stats.append(isoseq.transcript_length_hist(groups=groups, add_reference=True, min_coverage=2, transcript_filter=dict(query='FSM', progress_bar=progress_bar)))
     logger.info('3) Distribution of downstream A fraction in known genes')
-    tr_stats.append(isoseq.downstream_a_hist(groups=groups, tr_filter=dict(
+    tr_stats.append(isoseq.downstream_a_hist(groups=groups, transcript_filter=dict(
         query='not (NOVEL_GENE or UNSPLICED)', progress_bar=progress_bar), ref_filter=dict(query='not UNSPLICED')))
     logger.info('4) Distribution of downstream A fraction in novel genes')
-    tr_stats.append(isoseq.downstream_a_hist(groups=groups, tr_filter=dict(query='NOVEL_GENE and UNSPLICED', progress_bar=progress_bar)))
+    tr_stats.append(isoseq.downstream_a_hist(groups=groups, transcript_filter=dict(query='NOVEL_GENE and UNSPLICED', progress_bar=progress_bar)))
     logger.info('5) Distribution of direct repeats')
-    tr_stats.append(isoseq.direct_repeat_hist(groups=groups, tr_filter=dict(progress_bar=progress_bar)))
+    tr_stats.append(isoseq.direct_repeat_hist(groups=groups, transcript_filter=dict(progress_bar=progress_bar)))
     tr_stats.append((pd.concat([tr_stats[2][0].add_suffix(' novel unspliced'), tr_stats[1][0].add_suffix(' known multiexon')], axis=1), tr_stats[2][1]))
 
     plt.rcParams["figure.figsize"] = (30, 25)
@@ -208,7 +208,7 @@ def transcript_plots(isoseq: Transcriptome, groups, filename, progress_bar):
 
 def altsplice_plots(isoseq: Transcriptome, groups, filename, progress_bar):
     logger.info('preparing novel splicing statistics...')
-    altsplice = isoseq.altsplice_stats(groups=groups,  tr_filter=dict(query='not (RTTS or INTERNAL_PRIMING)', progress_bar=progress_bar))
+    altsplice = isoseq.altsplice_stats(groups=groups,  transcript_filter=dict(query='not (RTTS or INTERNAL_PRIMING)', progress_bar=progress_bar))
 
     plt.rcParams["figure.figsize"] = (15+5*len(groups), 10)
 

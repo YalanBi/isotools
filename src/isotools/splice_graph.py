@@ -471,7 +471,7 @@ class SegmentGraph():
 
         return j3, j4, altsplice
 
-    def fuzzy_junction(self, exons, size):
+    def fuzzy_junction(self, exons: list[tuple[int, int]], size: int):
         '''Looks for "fuzzy junctions" in the provided transcript.
 
         For each intron from "exons", look for introns in the splice graph shifted by less than "size".
@@ -488,21 +488,21 @@ class SegmentGraph():
             return fuzzy
         j1 = 0
         idx = range(j1, len(self))
-        for i, e1 in enumerate(exons[:-1]):
-            e2 = exons[i + 1]
+        for i, exon1 in enumerate(exons[:-1]):
+            exon2 = exons[i + 1]
             try:
                 # find j1: first node intersecting size range of e1 end
-                if self[j1].end + min(size, e1[1] - e1[0]) < e1[1]:
-                    j1 = next(j for j in idx if self[j].end + size >= e1[1])
+                if self[j1].end + min(size, exon1[1] - exon1[0]) < exon1[1]:
+                    j1 = next(j for j in idx if self[j].end + size >= exon1[1])
             except (StopIteration, IndexError):  # transcript end - we are done
                 break
             shift = []
-            while j1 < len(self) and self[j1].end - e1[1] <= min(size, e1[1] - e1[0]):  # in case there are several nodes starting in the range around e1
-                shift_e1 = self[j1].end - e1[1]
+            while j1 < len(self) and self[j1].end - exon1[1] <= min(size, exon1[1] - exon1[0]):  # in case there are several nodes starting in the range around e1
+                shift_e1 = self[j1].end - exon1[1]
                 # print(f'{i} {e1[1]}-{e2[0]} {shift_e1}')
                 if shift_e1 == 0:  # no shift required at this intron
                     break
-                if any(self[j2].start - e2[0] == shift_e1 for j2 in set(self[j1].suc.values())):
+                if any(self[j2].start - exon2[0] == shift_e1 for j2 in set(self[j1].suc.values())):
                     shift.append(shift_e1)
                 j1 += 1
             else:  # junction not found in sg
@@ -724,6 +724,12 @@ class SegmentGraph():
             node = next_node
         return node
 
+    def _get_exon_end_all(self, node: int):
+        'find the end of the exon considering all transcripts'
+        while node < len(self) - 1 and self[node].end == self[node + 1].start:
+            node += 1
+        return node
+
     def _get_exon_start(self, transcript_id: int, node: int):
         'find the start of the exon to which node belongs for given transcript'
         while node != self._tss[transcript_id]:
@@ -735,6 +741,12 @@ class SegmentGraph():
             if self[next_node].end < self[node].start:
                 return node
             node = next_node
+        return node
+
+    def _get_exon_start_all(self, node):
+        'find the start of the exon considering all transcripts'
+        while node > 0 and self[node - 1].end == self[node].start:
+            node -= 1
         return node
 
     def _find_splice_bubbles_at_position(self, types: list[ASEType], pos):
@@ -938,36 +950,26 @@ class SegmentGraph():
     def _find_start_end_events(self, types: list[ASEType]) -> Generator[ASEvent, None, None]:
         '''Searches for alternative TSS/PAS in the segment graph.
 
-        All transcripts sharing the same first/ last splice junction are considered to start/end at the same site and are summarized.
-        Alternative transcripts are all other transcripts of the gene that end after the TSS or respectively start before the PAS.
+        All transcripts sharing the same first/ last node in the splice graph are summarized.
+        All pairs of TSS/PAS are returned. The primary set is the set with the smaller coordinate,
+        the alternative the one with the larger coordinate.
 
         :return: Tuple with 1) transcript ids sharing common start exon and 2) alternative transcript ids respectively,
             as well as 3) start and 4) end node ids of the exon and 5) type of alternative event ("TSS" or "PAS")'''
         tss: dict[int, set[int]] = {}
         pas: dict[int, set[int]] = {}
-        tss_start: dict[int, int] = {}
-        pas_end: dict[int, int] = {}
+        # tss_start: dict[int, int] = {}
+        # pas_end: dict[int, int] = {}
         for transcript_id, (start1, end1) in enumerate(zip(self._tss, self._pas)):
-            start2 = self._get_exon_end(transcript_id, start1)
-            # skip single exon transcripts
-            if start2 == end1:
-                continue
-            # tss:  key: last node idx of start exon (e.g. first real splice junction),
-            #       value: a list of transcripts sharing this node as the last node of their start exon)
-            tss.setdefault(start2, set()).add(transcript_id)
-            # tss_start is first node of start exon (wrt all transcripts sharing same last node of start exon)
-            tss_start[start2] = min(start1, tss_start.get(start2, start1))
-
-            end2 = self._get_exon_start(transcript_id, end1)
-            pas.setdefault(end2, set()).add(transcript_id)
-            pas_end[end2] = max(end1, pas_end.get(end2, end1))
+            tss.setdefault(start1, set()).add(transcript_id)
+            pas.setdefault(end1, set()).add(transcript_id)
         alt_types: list[ASEType] = ['PAS', 'TSS'] if self.strand == '-' else ['TSS', 'PAS']
         if alt_types[0] in types:
-            for (prim_node_id, prim_set), (alt_node_id, alt_set) in itertools.combinations(tss.items(), 2):
-                yield (list(prim_set), list(alt_set), tss_start[prim_node_id], tss_start[alt_node_id], alt_types[0])
+            for (prim_node_id, prim_set), (alt_node_id, alt_set) in itertools.combinations(sorted(tss.items(), key=lambda item: item[0]), 2):
+                yield (list(prim_set), list(alt_set), prim_node_id, alt_node_id, alt_types[0])
         if alt_types[1] in types:
-            for (prim_node_id, prim_set), (alt_node_id, alt_set) in itertools.combinations(pas.items(), 2):
-                yield (list(prim_set), list(alt_set), pas_end[prim_node_id], pas_end[alt_node_id], alt_types[1])
+            for (prim_node_id, prim_set), (alt_node_id, alt_set) in itertools.combinations(sorted(pas.items(), key=lambda item: item[0]), 2):
+                yield (list(prim_set), list(alt_set), prim_node_id, alt_node_id, alt_types[1])
 
     def is_exonic(self, position):
         '''Checks whether the position is within an exon.

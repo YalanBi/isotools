@@ -51,7 +51,7 @@ ANNOTATION_VOCABULARY = ['antisense', 'intergenic', 'genic genomic', 'novel exon
 
 # filtering functions for the transcriptome class
 
-def add_orf_prediction(self, genome_fn, progress_bar=True, filter_transcripts={}, filter_ref_transcripts={}, min_len=300, max_5utr_len=500,
+def add_orf_prediction(self: 'Transcriptome', genome_fn, progress_bar=True, filter_transcripts={}, filter_ref_transcripts={}, min_len=300, max_5utr_len=500,
                        min_kozak=None, prefer_annotated_init=True,  kozak_matrix=DEFAULT_KOZAK_PWM, fickett_score=True, hexamer_file=None):
     ''' Performs ORF prediction on the transcripts.
 
@@ -102,8 +102,9 @@ def add_orf_prediction(self, genome_fn, progress_bar=True, filter_transcripts={}
 
 
 def add_qc_metrics(self: 'Transcriptome', genome_fn: str, progress_bar=True, downstream_a_len=30, direct_repeat_wd=15, direct_repeat_wobble=2, direct_repeat_mm=2,
-                   unify_ends=True):
-    ''' Retrieves QC metrics for the transcripts.
+                   unify_ends=True, correct_tss=True):
+    '''
+    Retrieves QC metrics for the transcripts.
 
     Calling this function populates transcript["biases"] information, which can be used do create filters.
     In particular, the direct repeat length, the downstream adenosine content and information about non-canonical splice sites are fetched.
@@ -113,8 +114,10 @@ def add_qc_metrics(self: 'Transcriptome', genome_fn: str, progress_bar=True, dow
     :param downstream_a_len: The number of bases downstream the transcript where the adenosine fraction is determined.
     :param direct_repeat_wd: The number of bases around the splice sites scanned for direct repeats.
     :param direct_repeat_wobble: Number of bases the splice site sequences are shifted.
-    :param unify_ends: Unify TSS/PAS across transcripts of a gene.
-    :param direct_repeat_mm: Maximum number of missmatches in a direct repeat.'''
+    :param direct_repeat_mm: Maximum number of missmatches in a direct repeat.
+    :param unify_ends: If set, the TSS and PAS are unified using peak calling.
+    :param correct_tss: If set TSS are corrected with respect to the reference annotation. Only used if unify_ends is set.
+    '''
 
     with FastaFile(genome_fn) as genome_fh:
         missing_chr = set(self.chromosomes) - set(genome_fh.references)
@@ -128,7 +131,7 @@ def add_qc_metrics(self: 'Transcriptome', genome_fn: str, progress_bar=True, dow
                 # remove segment graph (if unify TSS/PAS option selected)
                 gene.data['segment_graph'] = None
                 # "unify" TSS/PAS (if unify TSS/PAS option selected)
-                gene._unify_ends()
+                gene._unify_ends(correct_tss=correct_tss)
             # compute segment graph (if not present)
             _ = gene.segment_graph
             gene.add_fragments()
