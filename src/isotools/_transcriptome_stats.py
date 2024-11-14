@@ -408,6 +408,39 @@ def altsplice_stats(self, groups=None, weight_by_coverage=True, min_coverage=2, 
     return df, {'ylabel': ylab, 'title': title}
 
 
+def _check_customised_groups(transcriptome: 'Transcriptome', samples, groups, sample_idx=False):
+    '''
+    Check if the samples and all the samples in groups are consistent, and all found in transcriptome.samples.
+    Customised group names not in transcriptome.groups() are allowed.
+
+    :param sample_idx: If True, the samples are specified by sample indices. If False, the samples are specified by sample names.
+    :return: A dict {group_name:[sample_list]} with sample names or indices.
+    '''
+
+    if samples is None:
+        samples = transcriptome.samples
+    else:
+        assert all(s in transcriptome.samples for s in samples), 'not all specified samples found'
+        if isinstance(groups, dict):
+            assert list(set(sum(groups.values(), []))) == list(set(samples)), 'inconsistent samples specified in samples and in groups'
+
+    if groups is None:
+        group_dict = {'all' if len(samples) == len(transcriptome.samples) else 'selected': samples}
+    elif isinstance(groups, dict):
+        assert all(s in samples for s in sum(groups.values(), [])), 'not all the samples in specified groups are found'
+        group_dict = groups
+    elif isinstance(groups, list):
+        assert all(gn in transcriptome.groups() for gn in groups), 'not all specified groups are found. To customize groups, use a dict {group_name:[sample_name_list]}'
+        group_dict = {gn: [s for s in transcriptome.groups()[gn] if s in samples] for gn in groups if any(s in samples for s in transcriptome.groups()[gn])}
+    else:
+        raise ValueError('groups must be a dict or a list of group names')
+
+    if sample_idx:
+        group_dict = {gn:[transcriptome.samples.index(s) for s in sample_names] for gn, sample_names in group_dict.items()}
+    
+    return group_dict
+
+
 def entropy_calculation(self: 'Transcriptome', samples=None, groups=None, min_total=1, relative=True, **kwargs):
     '''
     Calculates the entropy of genes based on the coverage of selected transcripts.
@@ -420,24 +453,8 @@ def entropy_calculation(self: 'Transcriptome', samples=None, groups=None, min_to
     :return: A table of (relative) entropy of genes based on the coverage of selected transcripts.
     '''
 
-    if samples is None:
-        samples = self.samples
-    else:
-        assert all(s in self.samples for s in samples), 'not all specified samples found'
-        if isinstance(groups, dict):
-            assert list(set(sum(groups.values(), []))) == list(set(samples)), 'inconsistent samples specified in samples and in groups'
+    group_idxs = _check_customised_groups(self, samples, groups, sample_idx=True)
 
-    if groups is None:
-        group_idxs = {'all' if len(samples) == len(self.samples) else 'selected': [self.samples.index(s) for s in samples]}
-    elif isinstance(groups, dict):
-        assert all(s in samples for s in sum(groups.values(), [])), 'not all the samples in specified groups are found'
-        group_idxs = {k: [self.samples.index(s) for s in v] for k,v in groups.items()}
-    elif isinstance(groups, list):
-        assert all(gn in self.groups() for gn in groups), 'not all specified groups are found. To customize groups, use a dict {group_name:[sample_name_list]}'
-        group_idxs = {gn: [self.samples.index(s) for s in self.groups()[gn] if s in samples] for gn in groups if any(s in samples for s in self.groups()[gn])}
-    else:
-        raise ValueError('groups must be a dict or a list of group names')
-    
     entropy_tab = pd.DataFrame(columns=['gene_id', 'gene_name'] + [f'{g}_{c}' for g, c in itertools.product(group_idxs, ['ntr', 'rel_entropy' if relative else 'entropy'])])
 
     for gene, transcript_ids, _ in self.iter_transcripts(genewise=True, **kwargs):
@@ -476,23 +493,7 @@ def str_var_calculation(self: 'Transcriptome', samples=None, groups=None, strict
     :return: A table of structural variation of genes based on selected transcripts, including: gene_id, gene_name, and the variation of TSS, exon chain, and PAS for each group of samples.
     '''
 
-    if samples is None:
-        samples = self.samples
-    else:
-        assert all(s in self.samples for s in samples), 'not all specified samples found'
-        if isinstance(groups, dict):
-            assert list(set(sum(groups.values(), []))) == list(set(samples)), 'inconsistent samples specified in samples and in groups'
-
-    if groups is None:
-        group_sns = {'all' if len(samples) == len(self.samples) else 'selected': samples}
-    elif isinstance(groups, dict):
-        assert all(s in samples for s in sum(groups.values(), [])), 'not all the samples in specified groups are found'
-        group_sns = groups
-    elif isinstance(groups, list):
-        assert all(gn in self.groups() for gn in groups), 'not all specified groups are found. To customize groups, use a dict {group_name:[sample_name_list]}'
-        group_sns = {gn: [s for s in self.groups()[gn] if s in samples] for gn in groups if any(s in samples for s in self.groups()[gn])}
-    else:
-        raise ValueError('groups must be a dict or a list of group names')
+    group_sns = _check_customised_groups(self, samples, groups, sample_idx=False)
 
     str_var_tab = pd.DataFrame(columns=['gene_id', 'gene_name'] + [f'{g}_{c}' for g, c in itertools.product(group_sns, ['tss', 'ec', 'pas'])])
 
