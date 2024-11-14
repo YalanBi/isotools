@@ -441,24 +441,21 @@ def entropy_calculation(self: 'Transcriptome', samples=None, groups=None, min_to
     else:
         raise ValueError('groups must be a dict or a list of group names')
     
-    entropy_tab = pd.DataFrame(columns=['gene_id', 'gene_name'] + ['_'.join([g, c]) for g in group_idxs for c in ['ntr', 'rel_entropy' if relative else 'entropy']])
+    entropy_tab = pd.DataFrame(columns=['gene_id', 'gene_name'] + [f'{g}_{c}' for g, c in itertools.product(group_idxs, ['ntr', 'rel_entropy' if relative else 'entropy'])])
 
-    for gene, i_tuple, _ in self.iter_transcripts(genewise=True, **kwargs):
-        transcript_ids = list(i_tuple)
+    for gene, transcript_ids, _ in self.iter_transcripts(genewise=True, **kwargs):
         gene_entropy = [gene.id, gene.name]
 
-        for gn in group_idxs:
-            sample_ids = group_idxs[gn]
-
+        for _, sample_ids in group_idxs.items():
             cov = gene.coverage[np.ix_(sample_ids, transcript_ids)]
             if cov.sum() < min_total:
                 gene_entropy += [np.nan, np.nan]
             else:
-                n = sum(cov.sum(0) > 0)
-                e = -sum(math.log2(p) * p for p in cov.sum(0)[cov.sum(0) > 0] / cov.sum())
+                transcript_number = sum(cov.sum(0) > 0)
+                group_entropy = -sum(math.log2(p) * p for p in cov.sum(0)[cov.sum(0) > 0] / cov.sum())
                 if relative:
-                    e = e / math.log2(n) if n > 1 else None
-                gene_entropy += [n, e]
+                    group_entropy = (group_entropy / math.log2(transcript_number)) if transcript_number > 1 else np.nan
+                gene_entropy += [transcript_number, group_entropy]
         
         entropy_tab = pd.concat([entropy_tab, pd.DataFrame([gene_entropy], columns=entropy_tab.columns)], ignore_index=True)
     
@@ -475,9 +472,9 @@ def str_var_calculation(self: 'Transcriptome', samples=None, groups=None, strict
     
     :param samples: A list of sample names to specify the samples to be considered. If omitted, all samples are selected.
     :param groups: Quantification done by groups of samples. A dict {group_name:[sample_name_list]} or a list of group names. If omitted, all the samples are considered as one group.
-    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they cab be considered as identical.
+    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they can be considered as identical.
     :param strict_pos: Difference allowed between two positions when considering identical TSS/PAS.
-    :param count_number: By default False. If True, the counting number of distinct TSSs, exon chains and PASs in genes.
+    :param count_number: By default False. If True, the number of distinct TSSs, exon chains and PASs in genes directly.
     :param kwargs: Additional keyword arguments are passed to iter_transcripts.
     :return: A table of structural variation of genes based on selected transcripts, including: gene_id, gene_name, and the variation of TSS, exon chain, and PAS for each group of samples.
     '''
@@ -500,13 +497,13 @@ def str_var_calculation(self: 'Transcriptome', samples=None, groups=None, strict
     else:
         raise ValueError('groups must be a dict or a list of group names')
 
-    str_var_tab = pd.DataFrame(columns=['gene_id', 'gene_name'] + ['_'.join([g, c]) for g in group_sns for c in ['tss', 'ec', 'pas']])
+    str_var_tab = pd.DataFrame(columns=['gene_id', 'gene_name'] + [f'{g}_{c}' for g, c in itertools.product(group_sns, ['tss', 'ec', 'pas'])])
 
     for gene, _, selected_trs in self.iter_transcripts(genewise=True, **kwargs):
         gene_str_var = [gene.id, gene.name]
 
-        for gn in group_sns:
-            group_var = str_var_triplet(transcripts=selected_trs, samples=group_sns[gn], strict_ec=strict_ec, strict_pos=strict_pos)
+        for _, selected_samples in group_sns.items():
+            group_var = str_var_triplet(transcripts=selected_trs, samples=selected_samples, strict_ec=strict_ec, strict_pos=strict_pos)
 
             if not count_number:
                 # regress out the variation caused by TAS and PAS for exon chain

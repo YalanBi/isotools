@@ -563,50 +563,43 @@ def cmp_dist(a, b, min_dist=3):
     return 0
 
 
-# gene structure variation
+# region gene structure variation
 
 def structure_feature_cov(transcripts, samples, feature='TSS'):
     '''
     :param transcripts: A list of transcript annotations of a gene obtained from isoseq[gene].transcripts.
-    :param feature: 'ec', 'TSS', 'PAS'.
+    :param feature: 'EC', 'TSS', 'PAS'.
     :param samples: A list of sample names to specify the samples to be considered.
     :return: Selected feature of input transcripts and corresponding coverage across samples.
 
-    1) ec - exon_chain, query coverage matrix and exon positions, and return all the exon_chain and coverage.
+    1) EC - exon_chain, query coverage matrix and exon positions, and return all the exon_chain and coverage.
     2) TSS/PAS, query TSS_unified or PAS_unified coverage matrix, and return all the positions and coverage.
     '''
 
-    if feature not in ['ec', 'TSS', 'PAS']:
-        raise ValueError('choose feature from ec, TSS, PAS')
+    assert feature in ['EC', 'TSS', 'PAS'], 'choose feature from EC, TSS, PAS'
 
     cov = {}
-    if feature == 'ec':
+    if feature == 'EC':
         field = 'coverage'
-        for tr in transcripts:
-            if tr[field] is None:
+        for transcript in transcripts:
+            if transcript[field] is None:
                 continue
 
             # Convert list of exons to tuple of tuples to make it hashable as a key of a dictionary
-            exon_chain = tuple(map(tuple, tr['exons']))
-            if exon_chain not in cov:
-                cov[exon_chain] = 0
-            for s, n in tr[field].items():
+            exon_chain = tuple(map(tuple, transcript['exons']))
+            for s, n in transcript[field].items():
                 if s in samples:
-                    cov[exon_chain] += n
-            if cov[exon_chain] == 0:
-                del cov[exon_chain]
+                    cov[exon_chain] = cov.get(exon_chain, 0) + n
     else:
         field = f'{feature}_unified'
-        for tr in transcripts:
-            if tr[field] is None:
+        for transcript in transcripts:
+            if transcript[field] is None:
                 continue
 
-            for s,pos_dict in tr[field].items():
+            for s, pos_dict in transcript[field].items():
                 if s in samples:
                     for pos, n in pos_dict.items():
-                        if pos not in cov:
-                            cov[pos] = 0
-                        cov[pos] += n
+                        cov[pos] = cov.get(pos, 0) + n
 
     # keep ones with coverage > 0
     cov = {k: v for k, v in cov.items() if v > 0}
@@ -615,8 +608,8 @@ def structure_feature_cov(transcripts, samples, feature='TSS'):
         return [], []
 
     # sort the coverage in descending order and return
-    abundance, occurrence = zip(*sorted(zip(list(cov.values()), list(cov.keys())), reverse=True))
-    return list(abundance), list(occurrence)
+    occurrence, abundance = zip(*sorted(cov.items(), key=lambda x: x[1], reverse=True))
+    return abundance, occurrence
 
 
 def count_distinct_pos(pos_list, strict_pos=15):
@@ -643,7 +636,7 @@ def count_distinct_pos(pos_list, strict_pos=15):
 def count_distinct_exon_chain(ec_list, strict_ec=0, strict_pos=15):
     '''
     :param ec_list: A list of exon chains, sorted by their abundance descendingly (output from structure_feature_cov).
-    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they cab be considered as identical.
+    :param strict_ec: Distance allowed between each position, except for the first/last, in two exon chains so that they can be considered as identical.
     :param strict_pos: Difference allowed between two positions when considering identical TSS/PAS.
     :return: How many distinct exon chains are there.
     '''
@@ -662,7 +655,7 @@ def count_distinct_exon_chain(ec_list, strict_ec=0, strict_pos=15):
             pos_in_x = [pos for exon in ec_list[x] for pos in exon]
             pos_in_y = [pos for exon in ec_list[y] for pos in exon]
 
-            pos_diff = [abs(x - y) for x,y in zip(pos_in_x, pos_in_y)]
+            pos_diff = [abs(m - n) for m,n in zip(pos_in_x, pos_in_y)]
 
             if all(d <= strict_pos if (i == 0 or i == len(pos_diff)-1) else d <= strict_ec for i,d in enumerate(pos_diff)):
                 #print(f'{x} vs {y}: {[abs(x-y) for x,y in zip(pos_in_x, pos_in_y)]}')
@@ -683,7 +676,7 @@ def str_var_triplet(transcripts, samples, strict_ec=0, strict_pos=15):
     :return (list): A triplet of numbers in the order of distinct TSS positions, exon chains, and PAS positions.
     '''
     
-    _, ec_list = structure_feature_cov(transcripts=transcripts, samples=samples, feature='ec')
+    _, ec_list = structure_feature_cov(transcripts=transcripts, samples=samples, feature='EC')
     n_ec = count_distinct_exon_chain(ec_list=ec_list, strict_ec=strict_ec, strict_pos=strict_pos)
 
     _, tss_list = structure_feature_cov(transcripts=transcripts, samples=samples, feature='TSS')
@@ -693,3 +686,4 @@ def str_var_triplet(transcripts, samples, strict_ec=0, strict_pos=15):
     n_pas = count_distinct_pos(pos_list=pas_list, strict_pos=strict_pos)
 
     return [n_tss, n_ec, n_pas]
+# endregion
