@@ -9,6 +9,7 @@ import logging
 from scipy.stats import chi2_contingency, fisher_exact
 import math
 from typing import Literal, TypeAlias, TYPE_CHECKING
+from intervaltree import Interval, IntervalTree
 
 
 if TYPE_CHECKING:
@@ -619,18 +620,13 @@ def count_distinct_pos(pos_list, strict_pos=15):
     :return: How many distinct positions are there.
     '''
 
-    merged_idx = []
-    for x in range(len(pos_list)-1):
-        if x in merged_idx:
-            continue
-        for y in range(x+1, len(pos_list)):
-            if y in merged_idx:
-                continue
-            if pos_list[x] - strict_pos <= pos_list[y] <= pos_list[x] + strict_pos:
-                #print(f'{x}:{pos_list[x]} and {y}: {pos_list[y]} are close enough')
-                # keep the one with higher coverage
-                merged_idx.append(y)
-    return len(pos_list) - len(merged_idx)
+    tree = IntervalTree()
+    picked = 0
+    for pos in pos_list:
+        if len(tree[pos]) == 0:
+            tree[pos-strict_pos:pos+strict_pos+1] = 1
+            picked += 1
+    return picked
 
 
 def count_distinct_exon_chain(ec_list, strict_ec=0, strict_pos=15):
@@ -641,7 +637,7 @@ def count_distinct_exon_chain(ec_list, strict_ec=0, strict_pos=15):
     :return: How many distinct exon chains are there.
     '''
 
-    merged_idx = []
+    merged_idx = set()
     for x in range(len(ec_list)-1):
         if x in merged_idx:
             continue
@@ -658,9 +654,8 @@ def count_distinct_exon_chain(ec_list, strict_ec=0, strict_pos=15):
             pos_diff = [abs(m - n) for m,n in zip(pos_in_x, pos_in_y)]
 
             if all(d <= strict_pos if (i == 0 or i == len(pos_diff)-1) else d <= strict_ec for i,d in enumerate(pos_diff)):
-                #print(f'{x} vs {y}: {[abs(x-y) for x,y in zip(pos_in_x, pos_in_y)]}')
                 # keep the one with higher coverage
-                merged_idx.append(y)
+                merged_idx.add(y)
 
     return len(ec_list) - len(merged_idx)
 
